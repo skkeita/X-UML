@@ -478,3 +478,16 @@ export function setLegendVisible(source: string, visible: boolean): string {
   const s = kept.join('\n');
   return visible ? s : appendLine(s, 'legend off');
 }
+
+/**
+ * Dégroupe : le cadre (paquetage, système, cadre de diagramme) disparaît, ses membres restent
+ * tels quels, à leur place. Les relations qui visaient le groupe lui-même sont retirées.
+ */
+export function ungroup(source: string, group: { name: string; kind: 'package' | 'system' | 'frame'; line: number }): string {
+  if (group.kind !== 'frame') return deleteNodes(source, [group.name]);
+  const lines = source.split('\n');
+  const i = group.line - 1;
+  if (i < 0 || i >= lines.length || !/^\s*diagram\s/.test(lines[i])) return source;
+  lines.splice(i, 1);
+  return lines.join('\n');
+}

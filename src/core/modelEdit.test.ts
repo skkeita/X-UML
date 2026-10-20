@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { updateRelation } from './edit';
-import { addElement, renameElement, setElementKind, setElementLabel, setGroupOf, setMembers, setObjectType, setParents } from './modelEdit';
+import { ungroup, updateRelation } from './edit';
+import { addElement, renameElement, setGroupTitle, setElementKind, setElementLabel, setGroupOf, setMembers, setObjectType, setParents } from './modelEdit';
 import { parse } from './parser';
 
 const names = (s: string) => parse(s).diagram.classes.map((c) => c.name);
@@ -83,5 +83,33 @@ describe('édition sans code', () => {
     const out = updateRelation(s, { line: 1, from: 'A', to: 'B' }, { multFrom: '1', multTo: '0..*' });
     expect(out).toBe('A "1" -- "0..*" B');
     expect(updateRelation(out, { line: 1, from: 'A', to: 'B' }, { multFrom: '' })).toBe('A -- "0..*" B');
+  });
+});
+
+describe('groupes : renommer, dégrouper', () => {
+  const src = 'class A\nclass B\npackage Metier "Métier" : A, B\ndiagram class "Vue" : A, B\nMetier ..> Autre';
+  const groups = () => parse(src).diagram.groups ?? [];
+
+  it('renomme le titre d’un paquetage et d’un cadre', () => {
+    const [pkg, frame] = groups();
+    expect(setGroupTitle(src, pkg, 'Cœur métier')).toContain('package Metier "Cœur métier" : A, B');
+    expect(setGroupTitle(src, frame, 'Vue d’ensemble')).toContain('diagram class "Vue d’ensemble" : A, B');
+  });
+
+  it('dégroupe sans perdre les membres', () => {
+    const [pkg, frame] = groups();
+    const a = ungroup(src, pkg);
+    expect(a).not.toContain('package Metier');
+    expect(parse(a).diagram.classes.map((c) => c.name)).toEqual(expect.arrayContaining(['A', 'B', 'Autre']));
+    const b = ungroup(src, frame);
+    expect(b).not.toContain('diagram class');
+    expect(parse(b).diagram.groups).toHaveLength(1);
+  });
+
+  it('dégrouper un système dont les cas ne sont déclarés que dans le groupe les garde', () => {
+    const s = 'system S "Sys" : U1, U2\nactor C\nC -- U1';
+    const out = ungroup(s, parse(s).diagram.groups![0]);
+    expect(parse(out).diagram.classes.map((c) => c.name).sort()).toEqual(['C', 'U1', 'U2']);
+    expect(out).toContain('C -- U1');
   });
 });

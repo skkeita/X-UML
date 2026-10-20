@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { NAMED_COLORS } from '../core/parser';
 import type { DiagramType, LegendEntry } from '../core/types';
 
@@ -16,8 +16,14 @@ interface Props {
   y: number;
   /** Vrai : le menu est posé au-dessus de la sélection (y = son bord bas). */
   above?: boolean;
+  /** Largeur du canevas : le menu se recale pour rester entièrement visible. */
+  boundsW?: number;
   names: string[];
   onPackage: (title: string) => void;
+  /** La sélection est un groupe (clic sur son titre) : on peut le renommer ou le dégrouper. */
+  frame?: { title: string; kind: 'package' | 'system' | 'frame' };
+  onRenameFrame?: (title: string) => void;
+  onUngroup?: () => void;
   /** Regroupement proposé (« Regrouper dans un paquetage », « Placer dans un système »). */
   groupAction: string;
   groupPlaceholder: string;
@@ -39,8 +45,16 @@ interface Props {
  * Menu flottant au-dessus d'une sélection multiple : tout ce qu'on peut faire avec,
  * sans quitter le diagramme ni écrire de code.
  */
-export function SelectionMenu({ x, y, above, names, onPackage, groupAction, groupPlaceholder, onType, onDelete, onDuplicate, onColor, legend, currentColor, colors, onClear }: Props) {
-  const [step, setStep] = useState<'root' | 'package' | 'type' | 'title' | 'color'>('root');
+export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFrame, onUngroup, onPackage, groupAction, groupPlaceholder, onType, onDelete, onDuplicate, onColor, legend, currentColor, colors, onClear }: Props) {
+  const [step, setStep] = useState<'root' | 'package' | 'type' | 'title' | 'color' | 'rename'>('root');
+  // Centré sur la sélection, mais jamais coupé par le bord du canevas (largeur réelle mesurée).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [left, setLeft] = useState(x);
+  useLayoutEffect(() => {
+    const w = rootRef.current?.offsetWidth ?? 0;
+    const max = (boundsW ?? Infinity) - w / 2 - 8;
+    setLeft(Math.max(w / 2 + 8, Math.min(x, max)));
+  });
   const [color, setColor] = useState<string | null>(currentColor ?? null);
   const [legendLabel, setLegendLabel] = useState(() => legend.find((e) => e.color === currentColor)?.label ?? '');
   /** Un clic sur une couleur l'applique tout de suite : on voit le résultat, sans bouton « Appliquer ». */
@@ -78,12 +92,15 @@ export function SelectionMenu({ x, y, above, names, onPackage, groupAction, grou
   const [title, setTitle] = useState('');
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (step === 'package' || step === 'title') input.current?.focus();
+    if (step === 'package' || step === 'title' || step === 'rename') input.current?.focus();
   }, [step]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (step === 'package') {
+    if (step === 'rename') {
+      if (title.trim()) onRenameFrame?.(title.trim());
+      setStep('root');
+    } else if (step === 'package') {
       if (title.trim()) onPackage(title.trim());
     } else onType(type, title.trim());
   };
@@ -97,10 +114,33 @@ export function SelectionMenu({ x, y, above, names, onPackage, groupAction, grou
       aria-label="Actions sur la sélection"
       onPointerDown={(e) => e.stopPropagation()}
       className={`absolute z-30 -translate-x-1/2 ${above ? '-translate-y-full' : ''} whitespace-nowrap rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900`}
-      style={{ left: x, top: y }}
+      ref={rootRef}
+      style={{ left, top: y }}
     >
       {step === 'root' && (
-        <div className="flex items-center gap-0.5">
+        <div className="flex flex-col">
+          {frame && (
+            <div className="mb-0.5 flex items-center gap-0.5 border-b border-slate-100 pb-0.5 dark:border-slate-800">
+              <span className="min-w-0 max-w-[220px] flex-1 truncate px-2 text-xs font-semibold text-slate-700 dark:text-slate-200" title={frame.title}>
+                {frame.kind === 'package' ? '📁' : frame.kind === 'system' ? '▭' : '🏷️'} {frame.title}
+              </span>
+              <button
+                type="button"
+                className={btn}
+                onClick={() => {
+                  setTitle(frame.title);
+                  setStep('rename');
+                }}
+                title="Renommer ce groupe (ou double-clic sur son titre)"
+              >
+                ✏️ Renommer
+              </button>
+              <button type="button" className={btn} onClick={onUngroup} title="Retirer le cadre : les éléments restent, à leur place">
+                ⊟ Dégrouper
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-0.5">
           <span className="px-2 text-xs text-slate-500 dark:text-slate-400">
             {names.length} élément{names.length > 1 ? 's' : ''}
           </span>
@@ -122,6 +162,7 @@ export function SelectionMenu({ x, y, above, names, onPackage, groupAction, grou
           <button type="button" className={btn} onClick={onClear} title="Désélectionner (Échap)" aria-label="Désélectionner">
             ✕
           </button>
+          </div>
         </div>
       )}
 
@@ -213,19 +254,19 @@ export function SelectionMenu({ x, y, above, names, onPackage, groupAction, grou
         </div>
       )}
 
-      {(step === 'package' || step === 'title') && (
+      {(step === 'package' || step === 'title' || step === 'rename') && (
         <form onSubmit={submit} className="flex items-center gap-1 p-0.5">
           <input
             ref={input}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Escape' && setStep('root')}
-            placeholder={step === 'package' ? groupPlaceholder : 'Titre du diagramme'}
-            aria-label={step === 'package' ? groupPlaceholder : 'Titre du diagramme'}
+            placeholder={step === 'package' ? groupPlaceholder : step === 'rename' ? 'Nouveau titre' : 'Titre du diagramme'}
+            aria-label={step === 'package' ? groupPlaceholder : step === 'rename' ? 'Nouveau titre du groupe' : 'Titre du diagramme'}
             className="h-8 w-52 rounded-md border border-slate-200 bg-white px-2 text-sm focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950"
           />
           <button type="submit" className="h-8 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500">
-            {step === 'package' ? 'Créer' : 'Encadrer'}
+            {step === 'package' ? 'Créer' : step === 'rename' ? 'Renommer' : 'Encadrer'}
           </button>
           <button type="button" className={btn} onClick={() => setStep('root')}>
             Retour
