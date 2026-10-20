@@ -7,7 +7,7 @@ describe('parse', () => {
   it('parse le script d’exemple sans erreur', () => {
     const { diagram, errors } = parse(SAMPLE_SOURCE);
     expect(errors).toEqual([]);
-    expect(diagram.classes.map((c) => c.name)).toEqual(['Animal', 'Chien', 'Chat', 'Domestique', 'Personne']);
+    expect(diagram.classes.map((c) => c.name)).toEqual(['Animal', 'Chien', 'Domestique', 'Chat', 'Personne']);
     expect(diagram.relations).toHaveLength(4);
   });
 

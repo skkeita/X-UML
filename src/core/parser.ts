@@ -1,3 +1,4 @@
+import { IDENT, parseDecl } from './decl';
 import type {
   ClassNode,
   Diagram,
@@ -24,16 +25,12 @@ import type {
  *   Personne --> Animal : adopte (association dirigée + libellé)
  *   Personne -- Adresse          (association)   *-- composition   o-- agrégation   ..> dépendance
  *
+ *   class Chien extends Animal implements Domestique {   (liaisons créées automatiquement)
+ *
  * Les classes citées uniquement dans une relation sont créées implicitement.
  * UX : les identifiants acceptent les lettres accentuées (Étudiant, Réservation...).
  */
 
-const IDENT = '[\\p{L}_][\\p{L}\\p{N}_]*';
-
-const CLASS_DECL = new RegExp(
-  `^(abstract\\s+class|class|interface|enum)\\s+(${IDENT})\\s*(?:(\\{)\\s*(\\})?)?$`,
-  'u',
-);
 
 // L'ordre des alternatives compte : les opérateurs les plus longs d'abord.
 export const RELATION = new RegExp(
@@ -101,17 +98,26 @@ export function parse(source: string): ParseResult {
     }
 
     // 2) Déclaration de classe / interface / enum
-    const decl = CLASS_DECL.exec(line);
+    const decl = parseDecl(line);
     if (decl) {
-      const [, keyword, name, open, close] = decl;
+      const { keyword, name } = decl;
       const existing = classes.get(name);
       if (existing && existing.line !== lineNo && existing.members.length > 0) {
         errors.push({ line: lineNo, message: `« ${name} » est déjà déclarée ligne ${existing.line}` });
       }
       const node = ensureClass(name, lineNo);
-      const stereotype = stereotypeOf(keyword.replace(/\s+/g, ' '));
+      const stereotype = stereotypeOf(keyword);
       if (stereotype) node.stereotype = stereotype;
-      if (open && !close) current = node;
+      // Héritage écrit dans le code → liaisons créées automatiquement.
+      for (const parent of decl.extends) {
+        ensureClass(parent, lineNo);
+        relations.push({ from: name, to: parent, kind: 'inheritance', line: lineNo, auto: true });
+      }
+      for (const parent of decl.implements) {
+        ensureClass(parent, lineNo);
+        relations.push({ from: name, to: parent, kind: 'realization', line: lineNo, auto: true });
+      }
+      if (decl.opens) current = node;
       continue;
     }
 
@@ -133,7 +139,7 @@ export function parse(source: string): ParseResult {
 
     errors.push({
       line: lineNo,
-      message: 'Syntaxe non reconnue. Attendu : « class Nom { ... } » ou « A --|> B »',
+      message: 'Syntaxe non reconnue. Attendu : « class Nom { … } », « class A extends B { » ou « A --|> B »',
     });
   }
 
@@ -142,6 +148,10 @@ export function parse(source: string): ParseResult {
     errors.push({ line: unclosed.line, message: `Accolade fermante « } » manquante pour « ${unclosed.name} »` });
   }
 
-  const diagram: Diagram = { classes: [...classes.values()], relations };
+  // Une liaison écrite à la fois avec « extends » et à la main n'est dessinée qu'une fois.
+  const explicit = new Set(relations.filter((r) => !r.auto).map((r) => `${r.from}|${r.to}|${r.kind}`));
+  const unique = relations.filter((r) => !r.auto || !explicit.has(`${r.from}|${r.to}|${r.kind}`));
+
+  const diagram: Diagram = { classes: [...classes.values()], relations: unique };
   return { diagram, errors };
 }

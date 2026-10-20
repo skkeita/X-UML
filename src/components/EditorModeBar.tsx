@@ -35,13 +35,13 @@ export function EditorModeBar({ mode, onModeChange, focusName, lineCount, totalL
     <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2 dark:border-slate-800 dark:bg-slate-900">
       <div role="radiogroup" aria-label="Affichage du code" className="flex rounded-lg bg-slate-200/70 p-0.5 dark:bg-slate-800">
         {option('all', 'Toutes les classes', 'Afficher le code de toutes les classes')}
-        {option('class', 'Une classe', 'N’afficher que le code de la classe cliquée dans le diagramme (et ses liaisons en dessous)')}
+        {option('class', 'Une classe', 'N’afficher que le code de la classe cliquée dans le diagramme')}
       </div>
       {mode === 'class' && focusName && (
         <span className="min-w-0 truncate text-xs text-slate-500 dark:text-slate-400" title="Cliquez sur une autre classe du diagramme pour changer">
           <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{focusName}</span>
           <span className="ml-1.5">
-            · {lineCount}/{totalLines} lignes de code
+            · {lineCount}/{totalLines} lignes
           </span>
         </span>
       )}

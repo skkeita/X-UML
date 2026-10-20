@@ -13,7 +13,7 @@ interface Props {
   onAdd: (from: string, to: string, kind: RelationKind) => void;
 }
 
-const refOf = (r: Relation): RelationRef => ({ line: r.line, from: r.from, to: r.to });
+const refOf = (r: Relation): RelationRef => ({ line: r.line, from: r.from, to: r.to, auto: r.auto });
 
 /** Bouton montrant la flèche actuelle ; ouvre la liste des 7 types, chacun avec son dessin. */
 function KindSelect({ kind, onPick }: { kind: RelationKind; onPick: (k: RelationKind) => void }) {
@@ -175,7 +175,7 @@ export function RelationsPanel({ relations, classNames, filter, onChange, onDele
                 const ref = refOf(r);
                 return (
                   <li
-                    key={`${r.line}-${r.from}-${r.to}`}
+                    key={`${r.line}-${r.from}-${r.to}-${r.kind}`}
                     data-relation-row={r.line}
                     className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_minmax(0,0.9fr)_auto] items-center gap-1 rounded-md bg-white p-1 shadow-[0_0_0_1px_rgba(148,163,184,0.25)] dark:bg-slate-900"
                   >
@@ -190,7 +190,18 @@ export function RelationsPanel({ relations, classNames, filter, onChange, onDele
                         <option key={n}>{n}</option>
                       ))}
                     </select>
-                    <LabelInput value={r.label ?? ''} onCommit={(label) => onChange(ref, { label })} />
+                    {r.auto ? (
+                      <span
+                        title={`Créée automatiquement par « ${r.kind === 'inheritance' ? 'extends' : 'implements'} » dans le code de ${r.from}. La modifier ici met le code à jour.`}
+                        className="flex h-7 items-center gap-1 truncate rounded-md bg-indigo-50 px-1.5 text-[10.5px] font-medium text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300"
+                      >
+                        <span aria-hidden="true">⚡</span>
+                        auto
+                        <span className="sr-only"> · {r.kind === 'inheritance' ? 'extends' : 'implements'}</span>
+                      </span>
+                    ) : (
+                      <LabelInput value={r.label ?? ''} onCommit={(label) => onChange(ref, { label })} />
+                    )}
                     <div className="flex">
                       <button
                         type="button"

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Canvas } from './components/Canvas';
 import { CodeEditor } from './components/CodeEditor';
 import { EditorModeBar, FocusPlaceholder, type EditorMode } from './components/EditorModeBar';
 import { RelationsPanel } from './components/RelationsPanel';
 import { SplitPane } from './components/SplitPane';
+import { Toast, type ToastData } from './components/Toast';
 import { Toolbar } from './components/Toolbar';
 import { addRelation, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
@@ -17,7 +18,18 @@ import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useHistory } from './hooks/useHistory';
 import { useTheme } from './hooks/useTheme';
 import { buildSvgString, downloadText } from './lib/exportSvg';
+import { exportFileName, parseProjectFile, serializeProject } from './lib/projectFile';
 import { loadProject, type ProjectData } from './lib/storage';
+
+export type RelationMode = 'simple' | 'custom';
+const RELATION_MODE_KEY = 'x-uml:relation-mode';
+function loadRelationMode(): RelationMode {
+  try {
+    return localStorage.getItem(RELATION_MODE_KEY) === 'custom' ? 'custom' : 'simple';
+  } catch {
+    return 'simple';
+  }
+}
 
 const EDITOR_MODE_KEY = 'x-uml:editor-mode';
 function loadEditorMode(): EditorMode {
@@ -55,6 +67,18 @@ export default function App() {
       /* préférence non mémorisée : sans conséquence */
     }
   }, [editorMode]);
+  /**
+   * Simplifié : tout s'écrit dans le code, liaisons comprises (comme au début).
+   * Personnalisé : le code ne contient que les classes ; les liaisons se règlent dans leur panneau.
+   */
+  const [relationMode, setRelationMode] = useState<RelationMode>(loadRelationMode);
+  useEffect(() => {
+    try {
+      localStorage.setItem(RELATION_MODE_KEY, relationMode);
+    } catch {
+      /* préférence non mémorisée : sans conséquence */
+    }
+  }, [relationMode]);
   /** Classe actuellement sélectionnée dans le diagramme (null après un clic dans le vide). */
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   /** Classe affichée en mode « une classe » : reste affichée tant qu'on n'en clique pas une autre. */
@@ -132,12 +156,14 @@ export default function App() {
   );
 
   // L'éditeur montre le code des classes, jamais les liaisons (elles ont leur propre panneau).
-  const viewKey = editorMode === 'all' ? 'all' : `class:${focusName ?? ''}`;
+  // En mode Simplifié, l'éditeur montre aussi les liaisons (tout le script, comme au début).
+  const withRelations = relationMode === 'simple';
+  const viewKey = `${relationMode}:${editorMode === 'all' ? 'all' : `class:${focusName ?? ''}`}`;
   const viewLines = useMemo(() => {
     if (viewMemo && viewMemo.key === viewKey && viewMemo.source === source) return viewMemo.lines;
-    if (editorMode === 'all') return codeLines(source);
-    return focusName ? focusLines(source, focusName, false) : [];
-  }, [viewKey, viewMemo, source, editorMode, focusName]);
+    if (editorMode === 'all') return withRelations ? source.split('\n').map((_, i) => i) : codeLines(source);
+    return focusName ? focusLines(source, focusName, withRelations) : [];
+  }, [viewKey, viewMemo, source, editorMode, focusName, withRelations]);
 
   const onViewChange = useCallback(
     (view: string) => {
@@ -148,17 +174,18 @@ export default function App() {
         const decl = /^\s*(?:abstract\s+class|class|interface|enum)\s+([\p{L}_][\p{L}\p{N}_]*)/mu.exec(view);
         const name = decl && decl[1] !== focusName && focusLines(r.source, focusName, false).length === 0 ? decl[1] : focusName;
         if (name !== focusName) setFocusName(name);
-        key = `class:${name}`;
+        key = `${relationMode}:class:${name}`;
       }
       setViewMemo({ key, source: r.source, lines: r.lines });
       history.type((s) => ({ ...s, source: r.source }));
     },
-    [source, viewLines, viewKey, editorMode, focusName, history.type], // eslint-disable-line react-hooks/exhaustive-deps
+    [source, viewLines, viewKey, editorMode, focusName, relationMode, history.type], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const highlightLines = useMemo(
-    () => (editorMode === 'all' && selectedClass ? new Set(focusLines(source, selectedClass, false).map((i) => i + 1)) : undefined),
-    [editorMode, selectedClass, source],
+    () =>
+      editorMode === 'all' && selectedClass ? new Set(focusLines(source, selectedClass, withRelations).map((i) => i + 1)) : undefined,
+    [editorMode, selectedClass, source, withRelations],
   );
 
   /** Classe connue seulement par ses liaisons : on propose de la déclarer. */
@@ -175,11 +202,61 @@ export default function App() {
     const svg = buildSvgString(diagram, computeBoxes(diagram, positions), sceneTheme(theme));
     downloadText('diagramme.svg', svg, 'image/svg+xml');
   };
-  const downloadProject = () => downloadText('projet.x-uml.json', JSON.stringify(project, null, 2), 'application/json');
+
+  // --- Import / export du projet ------------------------------------------------------------
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [toast, setToast] = useState<ToastData | null>(null);
+  const closeToast = useCallback(() => setToast(null), []);
+  const [fitKey, setFitKey] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+
+  const downloadProject = useCallback(() => {
+    downloadText(exportFileName(), serializeProject(source, positions), 'application/json');
+    setToast({ id: Date.now(), message: 'Projet exporté : code et position des classes.', tone: 'success' });
+  }, [source, positions]);
 
   // Raccourcis globaux. Ctrl+Z est intercepté AUSSI dans l'éditeur : l'annulation native du
   // <textarea> ignorerait les modifications faites depuis le canevas et désynchroniserait tout.
   const { undo, redo } = history;
+
+  /** Remplace le projet courant par le fichier importé — en une étape annulable (Ctrl+Z). */
+  const importFile = useCallback(
+    async (file: File) => {
+      let text = '';
+      try {
+        text = await file.text();
+      } catch {
+        setToast({ id: Date.now(), message: 'Impossible de lire ce fichier.', tone: 'error' });
+        return;
+      }
+      const r = parseProjectFile(text, file.name);
+      if (!r.ok) {
+        setToast({ id: Date.now(), message: `Import impossible : ${r.error}`, tone: 'error' });
+        return;
+      }
+      history.push(() => ({ source: r.source, positions: r.positions }));
+      setViewMemo(null);
+      setFocusName(null);
+      setSelectedClass(null);
+      setFitKey((k) => k + 1);
+      setToast({ id: Date.now(), message: `« ${file.name} » importé.`, tone: 'success', action: { label: 'Annuler', onClick: undo } });
+    },
+    [history.push, undo], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const onDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    setDragOver(true);
+  };
+  const onDropFile = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) void importFile(f);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -187,12 +264,14 @@ export default function App() {
       if (k === 'z' && !e.shiftKey) undo();
       else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
       else if (k === 'b') setEditorOpen((o) => !o);
+      else if (k === 's') downloadProject(); // remplace « Enregistrer la page » du navigateur
+      else if (k === 'o') fileInput.current?.click();
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  }, [undo, redo, downloadProject]);
 
   const hasErrors = result.errors.length > 0;
 
@@ -207,7 +286,7 @@ export default function App() {
         onModeChange={setEditorMode}
         focusName={editorMode === 'class' && viewLines.length > 0 ? focusName : null}
         lineCount={viewLines.length}
-        totalLines={codeLines(source).length}
+        totalLines={withRelations ? source.split('\n').length : codeLines(source).length}
       />
       <div className="min-h-0 flex-1">
         {editorMode === 'all' || focusActive ? (
@@ -230,6 +309,7 @@ export default function App() {
           />
         )}
       </div>
+      {relationMode === 'custom' && (
       <RelationsPanel
         relations={diagram.relations}
         classNames={classNames}
@@ -238,6 +318,7 @@ export default function App() {
         onDelete={handleRelationDelete}
         onAdd={handleRelationAdd}
       />
+      )}
       <footer
         className={`shrink-0 border-t px-3 py-2 text-xs ${
           hasErrors
@@ -265,7 +346,25 @@ export default function App() {
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full flex-col"
+      onDragOver={onDragOver}
+      onDragLeave={(e) => {
+        if (!e.relatedTarget) setDragOver(false);
+      }}
+      onDrop={onDropFile}
+    >
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".json,.xuml,.txt,.puml,.uml,application/json,text/plain"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void importFile(f);
+          e.target.value = ''; // permet de réimporter le même fichier
+        }}
+      />
       <Toolbar
         theme={theme}
         onToggleTheme={toggle}
@@ -273,11 +372,14 @@ export default function App() {
         onToggleEditor={() => setEditorOpen((o) => !o)}
         onExportSvg={exportSvg}
         onDownloadProject={downloadProject}
+        onImport={() => fileInput.current?.click()}
         saveStatus={saveStatus}
         onUndo={undo}
         onRedo={redo}
         canUndo={history.canUndo}
         canRedo={history.canRedo}
+        relationMode={relationMode}
+        onRelationModeChange={setRelationMode}
       />
       <SplitPane
         leftOpen={editorOpen}
@@ -293,10 +395,17 @@ export default function App() {
             onRelationAdd={handleRelationAdd}
             onSelectClass={handleSelectClass}
             onDrop={handleDrop}
+            fitKey={fitKey}
             focus={focusActive ? focusName : null}
           />
         }
       />
+      {dragOver && (
+        <div className="pointer-events-none fixed inset-2 z-40 flex items-center justify-center rounded-xl border-4 border-dashed border-indigo-400 bg-indigo-500/10 text-lg font-medium text-indigo-700 backdrop-blur-[1px] dark:text-indigo-200">
+          Déposez le fichier pour importer le projet
+        </div>
+      )}
+      <Toast toast={toast} onClose={closeToast} />
     </div>
   );
 }

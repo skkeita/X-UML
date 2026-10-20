@@ -74,9 +74,7 @@ describe('vue ciblée sur une classe', () => {
   it('fonctionne sur le script d’exemple', () => {
     const lines = focusLines(SAMPLE_SOURCE, 'Chien');
     const text = focusText(SAMPLE_SOURCE, lines);
-    expect(text).toContain('class Chien {');
-    expect(text).toContain('Chien --|> Animal');
-    expect(text).toContain('Chien ..|> Domestique');
+    expect(text).toContain('class Chien extends Animal implements Domestique {');
     expect(text).not.toContain('Chat');
   });
 

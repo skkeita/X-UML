@@ -1,3 +1,4 @@
+import { formatDecl, parseDecl } from './decl';
 import { OPERATORS, RELATION } from './parser';
 import type { RelationKind } from './types';
 
@@ -27,6 +28,8 @@ export interface RelationRef {
   line: number;
   from: string;
   to: string;
+  /** Liaison créée par « extends » / « implements » : on modifie alors la déclaration. */
+  auto?: boolean;
 }
 
 export interface RelationChange {
@@ -85,6 +88,7 @@ function locate(source: string, ref: RelationRef): ParsedLine | null {
 
 /** Change le type et/ou le sens d'une relation. Renvoie le source inchangé si la ligne ne correspond plus. */
 export function updateRelation(source: string, ref: RelationRef, change: RelationChange): string {
+  if (ref.auto) return updateAutoRelation(source, ref, change);
   const p = locate(source, ref);
   if (!p) return source;
   const kind = change.kind ?? p.kind;
@@ -102,8 +106,8 @@ export function updateRelation(source: string, ref: RelationRef, change: Relatio
  * Ajoute une relation en fin de script. Si le script se termine par un bloc de relations,
  * la nouvelle ligne s'y colle ; sinon une ligne vide la sépare des déclarations.
  */
-export function addRelation(source: string, from: string, to: string, kind: RelationKind): string {
-  const line = `${from} ${SYMBOL[kind]} ${to}`;
+export function addRelation(source: string, from: string, to: string, kind: RelationKind, label?: string): string {
+  const line = `${from} ${SYMBOL[kind]} ${to}${label?.trim() ? ` : ${label.trim()}` : ''}`;
   const trimmed = source.replace(/\s+$/, '');
   if (!trimmed) return `${line}\n`;
   const lastLine = trimmed.slice(trimmed.lastIndexOf('\n') + 1).trim();
@@ -111,10 +115,71 @@ export function addRelation(source: string, from: string, to: string, kind: Rela
   return `${trimmed}${sep}${line}\n`;
 }
 
-/** Supprime la ligne de la relation. */
+/** Supprime la ligne de la relation (ou retire le parent de « extends » / « implements »). */
 export function deleteRelation(source: string, ref: RelationRef): string {
+  if (ref.auto) {
+    const d = locateDecl(source, ref);
+    if (!d) return source;
+    d.decl[d.list] = d.decl[d.list].filter((n) => n !== ref.to);
+    return d.write();
+  }
   const p = locate(source, ref);
   if (!p) return source;
   p.lines.splice(p.idx, 1);
   return p.lines.join('\n');
+}
+
+/* ------------------------------------------------------------------ */
+/* Liaisons automatiques (extends / implements)                        */
+/* ------------------------------------------------------------------ */
+
+function locateDecl(source: string, ref: RelationRef) {
+  const lines = source.split('\n');
+  const idx = ref.line - 1;
+  const raw = lines[idx];
+  if (raw === undefined) return null;
+  const eol = raw.endsWith('\r') ? '\r' : '';
+  const body = eol ? raw.slice(0, -1) : raw;
+  const cut = body.indexOf('//');
+  const code = cut >= 0 ? body.slice(0, cut) : body;
+  const comment = cut >= 0 ? ` ${body.slice(cut)}` : '';
+  const decl = parseDecl(code.trimEnd());
+  if (!decl || decl.name !== ref.from) return null;
+  const list: 'extends' | 'implements' | null = decl.extends.includes(ref.to)
+    ? 'extends'
+    : decl.implements.includes(ref.to)
+      ? 'implements'
+      : null;
+  if (!list) return null;
+  const write = () => {
+    lines[idx] = `${formatDecl(decl)}${comment}${eol}`;
+    return lines.join('\n');
+  };
+  return { decl, list, write };
+}
+
+/**
+ * Modifier une liaison automatique :
+ *  - rester un héritage / une réalisation depuis la même classe → on réécrit la déclaration
+ *    (« extends Animal » devient « implements Animal » ou « extends Mammifere ») ;
+ *  - sinon (autre type, autre source, sens inversé, libellé) → la liaison est « détachée » :
+ *    retirée de la déclaration et écrite comme une liaison manuelle.
+ */
+function updateAutoRelation(source: string, ref: RelationRef, change: RelationChange): string {
+  const d = locateDecl(source, ref);
+  if (!d) return source;
+  const currentKind: RelationKind = d.list === 'extends' ? 'inheritance' : 'realization';
+  const kind = change.kind ?? currentKind;
+  const from = change.from ?? ref.from;
+  const to = change.to ?? ref.to;
+
+  d.decl[d.list] = d.decl[d.list].filter((n) => n !== ref.to);
+  const staysInCode = !change.reverse && from === ref.from && !change.label?.trim() && (kind === 'inheritance' || kind === 'realization');
+  if (staysInCode) {
+    const target = kind === 'inheritance' ? 'extends' : 'implements';
+    if (!d.decl[target].includes(to)) d.decl[target].push(to);
+    return d.write();
+  }
+  const [a, b] = change.reverse ? [to, from] : [from, to];
+  return addRelation(d.write(), a, b, kind, change.label);
 }

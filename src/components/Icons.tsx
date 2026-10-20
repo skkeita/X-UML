@@ -23,6 +23,11 @@ export const DownloadIcon = () => (
     <path d="M12 3v12M7 10l5 5 5-5M4 20h16" />
   </Svg>
 );
+export const UploadIcon = () => (
+  <Svg>
+    <path d="M12 15V3M7 8l5-5 5 5M4 20h16" />
+  </Svg>
+);
 export const ImageIcon = () => (
   <Svg>
     <rect x="3" y="3" width="18" height="18" rx="2" />

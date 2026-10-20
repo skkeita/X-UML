@@ -33,6 +33,8 @@ export interface Relation {
   kind: RelationKind;
   label?: string;
   line: number;
+  /** Créée automatiquement par « extends » / « implements » dans la déclaration de la classe. */
+  auto?: boolean;
 }
 
 export interface Diagram {

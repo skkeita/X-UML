@@ -16,6 +16,8 @@ interface Props {
   onRelationChange: (ref: RelationRef, change: RelationChange) => void;
   onRelationDelete: (ref: RelationRef) => void;
   onRelationAdd: (from: string, to: string, kind: RelationKind) => void;
+  /** Change à chaque import : le canevas recadre alors tout le diagramme. */
+  fitKey?: number;
   /** Fin d'un glisser de classe : l'application corrige un éventuel chevauchement. */
   onDrop?: (name: string) => void;
   /** Prévient l'application de la classe cliquée (null : clic dans le vide). */
@@ -61,6 +63,7 @@ export function Canvas({
   onRelationAdd,
   onSelectClass,
   onDrop,
+  fitKey = 0,
   focus,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -79,7 +82,7 @@ export function Canvas({
   // Lien sélectionné (identifié par sa ligne source). S'il disparaît du texte, le panneau se ferme seul.
   const activeEdge = selectedEdge === null ? undefined : edges.find((e) => e.relation.line === selectedEdge);
   const activeRef: RelationRef | null = activeEdge
-    ? { line: activeEdge.relation.line, from: activeEdge.relation.from, to: activeEdge.relation.to }
+    ? { line: activeEdge.relation.line, from: activeEdge.relation.from, to: activeEdge.relation.to, auto: activeEdge.relation.auto }
     : null;
 
   /** Classe sous un point (monde), la plus haute d'abord. */
@@ -170,6 +173,15 @@ export function Canvas({
     const k = clamp(Math.min((W - 80) / b.w, (H - 80) / b.h), MIN_K, 1.25);
     setView({ k, x: (W - b.w * k) / 2 - b.x * k, y: (H - b.h * k) / 2 - b.y * k });
   }, [boxes]);
+
+  // Recadrage après un import (le nouveau diagramme arrive après l'anti-rebond du parseur).
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  useEffect(() => {
+    if (fitKey === 0) return;
+    const t = window.setTimeout(() => fitRef.current(), 350);
+    return () => window.clearTimeout(t);
+  }, [fitKey]);
 
   // Cadrage automatique une seule fois, dès que le diagramme n'est plus vide.
   useEffect(() => {

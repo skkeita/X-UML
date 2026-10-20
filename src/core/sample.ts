@@ -1,5 +1,5 @@
 export const SAMPLE_SOURCE = `// Bienvenue dans X-UML : écrivez à gauche, le diagramme se dessine à droite.
-// Glissez les boîtes à la souris pour les ranger (aimantation sur la grille, Alt pour la désactiver).
+// « extends » / « implements » créent la flèche d'héritage toute seule. Glissez les boîtes pour les ranger.
 
 abstract class Animal {
   # nom: string
@@ -8,12 +8,12 @@ abstract class Animal {
   + crier(): void
 }
 
-class Chien {
+class Chien extends Animal implements Domestique {
   + race: string
   + aboyer(): void
 }
 
-class Chat {
+class Chat extends Animal {
   + chasser(): void
 }
 
@@ -26,8 +26,6 @@ class Personne {
   + adopter(a: Animal): void
 }
 
-Chien --|> Animal
-Chat --|> Animal
-Chien ..|> Domestique
+// Les autres liaisons : panneau « Liaisons » (mode Personnalisé) ou ici (mode Simplifié)
 Personne --> Animal : adopte
 `;
