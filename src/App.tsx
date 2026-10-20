@@ -19,7 +19,7 @@ import { useAutosave } from './hooks/useAutosave';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useHistory } from './hooks/useHistory';
 import { useTheme } from './hooks/useTheme';
-import { exportPdf } from './lib/exportPdf';
+import { exportPdfPages } from './lib/exportPdf';
 import { buildSvg, buildSvgString, downloadText } from './lib/exportSvg';
 import { exportFileName, parseProjectFile, serializeProject } from './lib/projectFile';
 import { newBoard, type Board } from './lib/project';
@@ -290,11 +290,27 @@ export default function App() {
     [history.push], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  /** Nom de fichier lisible pour le tableau affiché (export SVG / PDF). */
-  const baseName = `${exportFileName().replace(/\.json$/, '')}-${active.name.normalize('NFD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'tableau'}`;
-  const exportSvg = () => {
-    const svg = buildSvgString(diagram, computeBoxes(diagram, positions), sceneTheme(theme));
-    downloadText(`${baseName}.svg`, svg, 'image/svg+xml');
+  /** Nom de fichier lisible pour un tableau (export SVG / PDF). */
+  const slug = (name: string) => name.normalize('NFD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'tableau';
+  const dated = exportFileName().replace(/\.json$/, '');
+  /** Tableaux choisis dans le menu Exporter (le tableau affiché par défaut), avec leur diagramme prêt à dessiner. */
+  const boardsFor = useCallback(
+    (ids?: string[]) =>
+      projectBoards
+        .filter((b) => (ids ? ids.includes(b.id) : b.id === active.id))
+        .map((b) => {
+          if (b.id === active.id) return { board: b, diagram, positions };
+          const d = parse(b.source).diagram;
+          return { board: b, diagram: d, positions: layoutNewClasses(d, b.positions) };
+        }),
+    [projectBoards, active.id, diagram, positions],
+  );
+  const exportSvg = (ids?: string[]) => {
+    const list = boardsFor(ids);
+    // Un fichier par tableau ; léger décalage pour que le navigateur accepte les téléchargements successifs.
+    list.forEach(({ board, diagram: d, positions: pos }, i) =>
+      window.setTimeout(() => downloadText(`${dated}-${slug(board.name)}.svg`, buildSvgString(d, computeBoxes(d, pos), sceneTheme(theme)), 'image/svg+xml'), i * 300),
+    );
   };
 
   // --- Import / export du projet ------------------------------------------------------------
@@ -304,26 +320,43 @@ export default function App() {
   const [fitKey, setFitKey] = useState(0);
   const [dragOver, setDragOver] = useState(false);
 
-  /** Export PDF : A4, thème clair, prêt à imprimer ou à joindre à un rapport. */
-  const downloadPdf = useCallback(async () => {
-    const { svg, width, height } = buildSvg(diagram, computeBoxes(diagram, positions), PRINT);
-    setToast({ id: Date.now(), message: 'Préparation du PDF…', tone: 'success' });
-    try {
-      await exportPdf(svg, width, height, `${baseName}.pdf`, active.name);
-      setToast({ id: Date.now(), message: 'PDF exporté (A4, prêt à imprimer).', tone: 'success' });
-    } catch {
-      setToast({ id: Date.now(), message: 'Impossible de créer le PDF dans ce navigateur.', tone: 'error' });
-    }
-  }, [diagram, positions, baseName, active.name]);
+  /** Export PDF : A4, thème clair ; plusieurs tableaux → un seul PDF, une page par tableau. */
+  const downloadPdf = useCallback(
+    async (ids?: string[]) => {
+      const list = boardsFor(ids);
+      if (list.length === 0) return;
+      const pages = list.map(({ board, diagram: d, positions: pos }) => ({ ...buildSvg(d, computeBoxes(d, pos), PRINT), title: board.name }));
+      const many = list.length > 1;
+      setToast({ id: Date.now(), message: 'Préparation du PDF…', tone: 'success' });
+      try {
+        await exportPdfPages(pages, `${dated}-${many ? 'projet' : slug(list[0].board.name)}.pdf`, many ? 'Projet X-UML' : list[0].board.name);
+        setToast({
+          id: Date.now(),
+          message: many ? `PDF exporté : ${list.length} tableaux, une page A4 chacun.` : 'PDF exporté (A4, prêt à imprimer).',
+          tone: 'success',
+        });
+      } catch {
+        setToast({ id: Date.now(), message: 'Impossible de créer le PDF dans ce navigateur.', tone: 'error' });
+      }
+    },
+    [boardsFor, dated],
+  );
 
-  const downloadProject = useCallback(() => {
-    downloadText(exportFileName(), serializeProject(projectBoards), 'application/json');
-    setToast({
-      id: Date.now(),
-      message: `Projet exporté : ${projectBoards.length} tableau${projectBoards.length > 1 ? 'x' : ''}, code et positions.`,
-      tone: 'success',
-    });
-  }, [projectBoards]);
+  /** Projet .json : tous les tableaux par défaut (Ctrl+S), ou ceux cochés dans le menu. */
+  const downloadProject = useCallback(
+    (ids?: string[]) => {
+      const list = ids ? projectBoards.filter((b) => ids.includes(b.id)) : projectBoards;
+      if (list.length === 0) return;
+      const name = list.length === 1 && projectBoards.length > 1 ? `${dated}-${slug(list[0].name)}.json` : exportFileName();
+      downloadText(name, serializeProject(list), 'application/json');
+      setToast({
+        id: Date.now(),
+        message: `Projet exporté : ${list.length} tableau${list.length > 1 ? 'x' : ''}, code et positions.`,
+        tone: 'success',
+      });
+    },
+    [projectBoards, dated],
+  );
 
   // Raccourcis globaux. Ctrl+Z est intercepté AUSSI dans l'éditeur : l'annulation native du
   // <textarea> ignorerait les modifications faites depuis le canevas et désynchroniserait tout.
@@ -497,10 +530,12 @@ export default function App() {
         onToggleTheme={toggle}
         editorOpen={editorOpen}
         onToggleEditor={() => setEditorOpen((o) => !o)}
+        boards={boards.map((b) => ({ id: b.id, name: b.name }))}
+        activeId={active.id}
         onExportSvg={exportSvg}
         onDownloadProject={downloadProject}
         onImport={() => fileInput.current?.click()}
-        onExportPdf={() => void downloadPdf()}
+        onExportPdf={(ids) => void downloadPdf(ids)}
         saveStatus={saveStatus}
         onUndo={undo}
         onRedo={redo}
