@@ -25,10 +25,14 @@ export interface EdgeGeometry {
 type Side = 'top' | 'bottom' | 'left' | 'right';
 
 const TREE_KINDS: RelationKind[] = ['inheritance', 'realization'];
+/** En dessous de cet écart (px) entre les deux extrémités, on redresse le lien en trait droit. */
+const MAX_JOG = 32;
 /** Distance minimale (px) entre un trajet de contournement et une classe. */
 const CLEARANCE = 16;
 /** Coût d'un virage (en px équivalents) : on préfère un trajet un peu plus long mais plus simple. */
 const BEND_COST = 40;
+/** Coût pour emprunter un segment déjà occupé par un autre lien (les deux traits se confondraient). */
+const OVERLAP_COST = 400;
 /** Coût pour sortir d'une classe par un autre côté que celui prévu. */
 const SIDE_COST = 30;
 /** Chevauchement minimal pour tirer un trait parfaitement droit entre deux classes. */
@@ -271,7 +275,26 @@ function searchRoute(
   preferA: Side,
   preferB: Side,
   portFor: (r: Rect, side: Side, which: 'a' | 'b') => Point,
+  occupied: Point[][] = [],
 ): Point[] | null {
+  // Segments déjà dessinés par les autres liens : on évite de rouler dessus.
+  const used: { horiz: boolean; c: number; lo: number; hi: number }[] = [];
+  for (const path of occupied) {
+    for (let k = 0; k < path.length - 1; k++) {
+      const p = path[k];
+      const q = path[k + 1];
+      if (Math.abs(p.y - q.y) < 0.01) used.push({ horiz: true, c: p.y, lo: Math.min(p.x, q.x), hi: Math.max(p.x, q.x) });
+      else used.push({ horiz: false, c: p.x, lo: Math.min(p.y, q.y), hi: Math.max(p.y, q.y) });
+    }
+  }
+  const overlapCost = (x1: number, y1: number, x2: number, y2: number) => {
+    const horiz = Math.abs(y1 - y2) < 0.01;
+    const c = horiz ? y1 : x1;
+    const lo = horiz ? Math.min(x1, x2) : Math.min(y1, y2);
+    const hi = horiz ? Math.max(x1, x2) : Math.max(y1, y2);
+    for (const u of used) if (u.horiz === horiz && Math.abs(u.c - c) < 3 && Math.min(u.hi, hi) - Math.max(u.lo, lo) > 2) return OVERLAP_COST;
+    return 0;
+  };
   // Zones interdites : chaque classe agrandie de CLEARANCE - 1 (les lignes de la grille passent juste au-delà).
   const zones = all.map((r) => ({ x0: r.x - CLEARANCE + 1, y0: r.y - CLEARANCE + 1, x1: r.x + r.w + CLEARANCE - 1, y1: r.y + r.h + CLEARANCE - 1 }));
   const blocked = (x: number, y: number) => zones.some((z) => x > z.x0 && x < z.x1 && y > z.y0 && y < z.y1);
@@ -368,7 +391,12 @@ function searchRoute(
       if (ni < 0 || nj < 0 || ni >= W || nj >= H || !free(ni, nj)) continue;
       // Le segment ne doit pas traverser une zone interdite (milieu testé : la grille contient tous les bords).
       if (blocked((xs[i] + xs[ni]) / 2, (ys[j] + ys[nj]) / 2)) continue;
-      const ng = g + Math.abs(xs[ni] - xs[i]) + Math.abs(ys[nj] - ys[j]) + (d === dir ? 0 : BEND_COST);
+      const ng =
+        g +
+        Math.abs(xs[ni] - xs[i]) +
+        Math.abs(ys[nj] - ys[j]) +
+        (d === dir ? 0 : BEND_COST) +
+        overlapCost(xs[i], ys[j], xs[ni], ys[nj]);
       const ns = (nj * W + ni) * 4 + d;
       if (ng < dist[ns]) {
         dist[ns] = ng;
@@ -405,6 +433,33 @@ function labelPoint(points: Point[]): Point {
   const q = points[best + 1] ?? p;
   const horizontal = Math.abs(p.y - q.y) < 0.5;
   return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 - (horizontal ? 6 : 0) };
+}
+
+/**
+ * Supprime une petite « marche » juste avant d'arriver sur une classe (ou juste après en être sorti) :
+ * le point d'ancrage glisse le long du côté de la classe pour s'aligner sur le trajet.
+ */
+function removeEndJogs(points: Point[], a: Rect, b: Rect, keepEnd: boolean): Point[] {
+  const pts = points.map((p) => ({ ...p }));
+  const fix = (port: number, stub: number, jogEnd: number, before: number, box: Rect) => {
+    const [p0, p1, p2, p3] = [pts[port], pts[stub], pts[jogEnd], pts[before]];
+    if (!p0 || !p1 || !p2 || !p3) return;
+    const horizontalEnd = Math.abs(p0.y - p1.y) < 0.01 && Math.abs(p2.y - p3.y) < 0.01 && Math.abs(p1.x - p2.x) < 0.01;
+    const verticalEnd = Math.abs(p0.x - p1.x) < 0.01 && Math.abs(p2.x - p3.x) < 0.01 && Math.abs(p1.y - p2.y) < 0.01;
+    if (horizontalEnd && Math.abs(p1.y - p2.y) < MAX_JOG && p2.y >= box.y + 6 && p2.y <= box.y + box.h - 6) {
+      p0.y = p2.y;
+      p1.y = p2.y;
+    } else if (verticalEnd && Math.abs(p1.x - p2.x) < MAX_JOG && p2.x >= box.x + 6 && p2.x <= box.x + box.w - 6) {
+      p0.x = p2.x;
+      p1.x = p2.x;
+    }
+  };
+  const n = pts.length;
+  if (n >= 4) {
+    fix(0, 1, 2, 3, a);
+    if (!keepEnd) fix(n - 1, n - 2, n - 3, n - 4, b);
+  }
+  return simplify(pts);
 }
 
 /** Vrai si un segment intermédiaire (hors premier et dernier) entre dans l'une des deux classes reliées. */
@@ -445,6 +500,14 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>)
   const sideUse = new Map<string, number>();
   for (const p of plans) {
     for (const k of [`${p.relation.from}|${p.sideA}`, `${p.relation.to}|${p.sideB}`]) sideUse.set(k, (sideUse.get(k) ?? 0) + 1);
+  }
+
+  // Nombre de liens qui arrivent sur un même point partagé (arbre d'héritage).
+  const treeUse = new Map<string, number>();
+  for (const p of plans) {
+    if (!TREE_KINDS.includes(p.relation.kind)) continue;
+    const k = `${p.relation.to}|${p.sideB}|${p.relation.kind}`;
+    treeUse.set(k, (treeUse.get(k) ?? 0) + 1);
   }
 
   const edges: EdgeGeometry[] = [];
@@ -492,6 +555,31 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>)
       }
     }
 
+    // Petit décrochement (quelques px) entre deux classes presque alignées → trait droit.
+    // On aligne les deux extrémités sur une même coordonnée prise dans la zone commune aux deux côtés,
+    // sauf si l'arrivée est un point partagé (arbre d'héritage) : le bouger casserait l'arbre.
+    const sharedEnd = shared && (treeUse.get(`${r.to}|${p.sideB}|${r.kind}`) ?? 0) > 1;
+    const jog = p.vertical ? pb.x - pa.x : pb.y - pa.y;
+    if (jog !== 0 && Math.abs(jog) < MAX_JOG) {
+      const lo = (p.vertical ? Math.max(a.x, b.x) : Math.max(a.y, b.y)) + 6;
+      const hi = (p.vertical ? Math.min(a.x + a.w, b.x + b.w) : Math.min(a.y + a.h, b.y + b.h)) - 6;
+      if (hi >= lo) {
+        const from = p.vertical ? pa.x : pa.y;
+        const to = p.vertical ? pb.x : pb.y;
+        // Arrivée partagée : c'est le départ qui s'aligne dessus ; sinon on se retrouve au milieu.
+        const target = Math.min(Math.max(sharedEnd ? to : (from + to) / 2, lo), hi);
+        if (!sharedEnd || target === to) {
+          if (p.vertical) {
+            pa = { x: target, y: pa.y };
+            pb = { x: target, y: pb.y };
+          } else {
+            pa = { x: pa.x, y: target };
+            pb = { x: pb.x, y: target };
+          }
+        }
+      }
+    }
+
     const obstacles = Object.entries(boxes)
       .filter(([name]) => name !== r.from && name !== r.to)
       .map(([, rect]) => rect);
@@ -504,11 +592,14 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>)
         if (which === 'b' && side === p.sideB) return pb;
         return sideCenter(box, side);
       };
-      const routed = searchRoute(a, b, Object.values(boxes), p.sideA, p.sideB, portFor);
+      const routed = searchRoute(a, b, Object.values(boxes), p.sideA, p.sideB, portFor, edges.map((e) => e.points));
       if (routed) points = routed;
     }
 
     points = simplify(points);
+    // Dernier ajustement : pas de petite marche aux extrémités (l'arrivée d'un arbre d'héritage reste fixe).
+    const smoothed = removeEndJogs(points, a, b, sharedEnd);
+    if (!collides(smoothed, obstacles) && !crossesOwn(smoothed, a, b)) points = smoothed;
     edges.push({ relation: r, d: toPath(points), points, label: labelPoint(points) });
   });
   return edges;

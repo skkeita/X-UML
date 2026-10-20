@@ -8,7 +8,8 @@ describe('parse', () => {
     const { diagram, errors } = parse(SAMPLE_SOURCE);
     expect(errors).toEqual([]);
     expect(diagram.classes.map((c) => c.name)).toEqual(['Animal', 'Chien', 'Domestique', 'Chat', 'Personne']);
-    expect(diagram.relations).toHaveLength(4);
+    // 3 par extends/implements, 1 écrite, 1 déduite (Domestique.getProprietaire(): Personne)
+    expect(diagram.relations).toHaveLength(5);
   });
 
   it('gère la visibilité, attributs et méthodes', () => {

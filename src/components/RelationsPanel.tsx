@@ -13,7 +13,16 @@ interface Props {
   onAdd: (from: string, to: string, kind: RelationKind) => void;
 }
 
-const refOf = (r: Relation): RelationRef => ({ line: r.line, from: r.from, to: r.to, auto: r.auto });
+const refOf = (r: Relation): RelationRef => ({ line: r.line, from: r.from, to: r.to, auto: r.auto, via: r.via, kind: r.kind });
+
+/** Explication affichée au survol du badge « auto ». */
+function autoHint(r: Relation): string {
+  if (r.via === 'member') {
+    return `Créée automatiquement : un ${r.kind === 'directed' ? 'attribut' : 'membre'} de ${r.from} utilise le type ${r.to}. La modifier ici la transforme en liaison manuelle ; pour la retirer, enlevez « ${r.to} » du code de ${r.from}.`;
+  }
+  const kw = r.via === 'implements' ? 'implements' : 'extends';
+  return `Créée automatiquement par « ${kw} » dans le code de ${r.from}. La modifier ici met le code à jour.`;
+}
 
 /** Bouton montrant la flèche actuelle ; ouvre la liste des 7 types, chacun avec son dessin. */
 function KindSelect({ kind, onPick }: { kind: RelationKind; onPick: (k: RelationKind) => void }) {
@@ -192,12 +201,12 @@ export function RelationsPanel({ relations, classNames, filter, onChange, onDele
                     </select>
                     {r.auto ? (
                       <span
-                        title={`Créée automatiquement par « ${r.kind === 'inheritance' ? 'extends' : 'implements'} » dans le code de ${r.from}. La modifier ici met le code à jour.`}
+                        title={autoHint(r)}
                         className="flex h-7 items-center gap-1 truncate rounded-md bg-indigo-50 px-1.5 text-[10.5px] font-medium text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300"
                       >
                         <span aria-hidden="true">⚡</span>
                         auto
-                        <span className="sr-only"> · {r.kind === 'inheritance' ? 'extends' : 'implements'}</span>
+                        <span className="sr-only"> · {r.via === 'member' ? 'type' : r.via}</span>
                       </span>
                     ) : (
                       <LabelInput value={r.label ?? ''} onCommit={(label) => onChange(ref, { label })} />
@@ -215,9 +224,10 @@ export function RelationsPanel({ relations, classNames, filter, onChange, onDele
                       <button
                         type="button"
                         onClick={() => onDelete(ref)}
-                        title="Supprimer la liaison"
+                        disabled={r.via === 'member'}
+                        title={r.via === 'member' ? `Retirez « ${r.to} » du code de ${r.from} pour supprimer cette liaison` : 'Supprimer la liaison'}
                         aria-label="Supprimer la liaison"
-                        className="flex h-7 w-6 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
+                        className="flex h-7 w-6 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-red-500/10"
                       >
                         ✕
                       </button>

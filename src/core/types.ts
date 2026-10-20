@@ -33,8 +33,10 @@ export interface Relation {
   kind: RelationKind;
   label?: string;
   line: number;
-  /** Créée automatiquement par « extends » / « implements » dans la déclaration de la classe. */
+  /** Créée automatiquement à partir du code (pas écrite comme liaison). */
   auto?: boolean;
+  /** Origine d'une liaison automatique : « extends », « implements », ou le type d'un attribut / d'une méthode. */
+  via?: 'extends' | 'implements' | 'member';
 }
 
 export interface Diagram {

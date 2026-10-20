@@ -28,8 +28,11 @@ export interface RelationRef {
   line: number;
   from: string;
   to: string;
-  /** Liaison créée par « extends » / « implements » : on modifie alors la déclaration. */
+  /** Liaison créée automatiquement à partir du code. */
   auto?: boolean;
+  via?: 'extends' | 'implements' | 'member';
+  /** Type actuel (utile pour une liaison déduite, qu'on réécrit à l'identique sauf changement). */
+  kind?: RelationKind;
 }
 
 export interface RelationChange {
@@ -88,6 +91,7 @@ function locate(source: string, ref: RelationRef): ParsedLine | null {
 
 /** Change le type et/ou le sens d'une relation. Renvoie le source inchangé si la ligne ne correspond plus. */
 export function updateRelation(source: string, ref: RelationRef, change: RelationChange): string {
+  if (ref.auto && ref.via === 'member') return detachMemberRelation(source, ref, change);
   if (ref.auto) return updateAutoRelation(source, ref, change);
   const p = locate(source, ref);
   if (!p) return source;
@@ -117,6 +121,8 @@ export function addRelation(source: string, from: string, to: string, kind: Rela
 
 /** Supprime la ligne de la relation (ou retire le parent de « extends » / « implements »). */
 export function deleteRelation(source: string, ref: RelationRef): string {
+  // Liaison déduite d'un attribut / d'une méthode : elle disparaît en retirant la référence du code.
+  if (ref.auto && ref.via === 'member') return source;
   if (ref.auto) {
     const d = locateDecl(source, ref);
     if (!d) return source;
@@ -182,4 +188,16 @@ function updateAutoRelation(source: string, ref: RelationRef, change: RelationCh
   }
   const [a, b] = change.reverse ? [to, from] : [from, to];
   return addRelation(d.write(), a, b, kind, change.label);
+}
+
+/**
+ * Modifier une liaison déduite d'un attribut / d'une méthode : on écrit la version voulue comme
+ * liaison manuelle (une liaison manuelle entre deux classes remplace toujours celle déduite).
+ */
+function detachMemberRelation(source: string, ref: RelationRef, change: RelationChange): string {
+  const kind = change.kind ?? ref.kind ?? 'dependency';
+  const from = change.from ?? ref.from;
+  const to = change.to ?? ref.to;
+  const [a, b] = change.reverse ? [to, from] : [from, to];
+  return addRelation(source, a, b, kind, change.label);
 }

@@ -82,7 +82,7 @@ export function Canvas({
   // Lien sélectionné (identifié par sa ligne source). S'il disparaît du texte, le panneau se ferme seul.
   const activeEdge = selectedEdge === null ? undefined : edges.find((e) => e.relation.line === selectedEdge);
   const activeRef: RelationRef | null = activeEdge
-    ? { line: activeEdge.relation.line, from: activeEdge.relation.from, to: activeEdge.relation.to, auto: activeEdge.relation.auto }
+    ? { line: activeEdge.relation.line, from: activeEdge.relation.from, to: activeEdge.relation.to, auto: activeEdge.relation.auto, via: activeEdge.relation.via, kind: activeEdge.relation.kind }
     : null;
 
   /** Classe sous un point (monde), la plus haute d'abord. */
@@ -384,10 +384,14 @@ export function Canvas({
           current={activeEdge.relation.kind}
           onPick={(kind) => onRelationChange(activeRef, { kind })}
           onReverse={() => onRelationChange(activeRef, { reverse: true })}
-          onDelete={() => {
-            onRelationDelete(activeRef);
-            setSelectedEdge(null);
-          }}
+          onDelete={
+            activeRef.via === 'member'
+              ? undefined
+              : () => {
+                  onRelationDelete(activeRef);
+                  setSelectedEdge(null);
+                }
+          }
           onClose={() => setSelectedEdge(null)}
         />
       )}

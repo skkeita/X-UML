@@ -112,9 +112,15 @@ export function RelationPicker({ x, y, bounds, from, to, current, onPick, onReve
         <button type="button" onClick={onReverse} title="Inverser le sens (R)" className="flex-1 rounded-md px-2 py-1.5 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
           ⇄ Inverser
         </button>
-        <button type="button" onClick={onDelete} title="Supprimer le lien (Suppr)" className="flex-1 rounded-md px-2 py-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">
-          Supprimer
-        </button>
+        {onDelete ? (
+          <button type="button" onClick={onDelete} title="Supprimer le lien (Suppr)" className="flex-1 rounded-md px-2 py-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">
+            Supprimer
+          </button>
+        ) : (
+          <span className="flex-1 self-center px-2 text-center text-[10.5px] leading-tight text-slate-400" title="Ce lien vient du type utilisé dans un attribut ou une méthode">
+            ⚡ lien déduit du code
+          </span>
+        )}
       </div>
       )}
     </div>

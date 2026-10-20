@@ -8,9 +8,9 @@ describe('liaisons automatiques (extends / implements)', () => {
     const { diagram, errors } = parse('class Chien extends Animal implements Domestique, Gardien {\n  + race: string\n}');
     expect(errors).toEqual([]);
     expect(diagram.relations).toEqual([
-      { from: 'Chien', to: 'Animal', kind: 'inheritance', line: 1, auto: true },
-      { from: 'Chien', to: 'Domestique', kind: 'realization', line: 1, auto: true },
-      { from: 'Chien', to: 'Gardien', kind: 'realization', line: 1, auto: true },
+      { from: 'Chien', to: 'Animal', kind: 'inheritance', line: 1, auto: true, via: 'extends' },
+      { from: 'Chien', to: 'Domestique', kind: 'realization', line: 1, auto: true, via: 'implements' },
+      { from: 'Chien', to: 'Gardien', kind: 'realization', line: 1, auto: true, via: 'implements' },
     ]);
     expect(diagram.classes.map((c) => c.name)).toEqual(['Chien', 'Animal', 'Domestique', 'Gardien']);
     expect(diagram.classes[0].members).toHaveLength(1);

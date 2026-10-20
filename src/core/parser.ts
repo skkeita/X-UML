@@ -1,4 +1,6 @@
 import { IDENT, parseDecl } from './decl';
+
+const IDENT_G = new RegExp(IDENT, 'gu');
 import type {
   ClassNode,
   Diagram,
@@ -74,6 +76,8 @@ export function parse(source: string): ParseResult {
   const relations: Relation[] = [];
   const errors: ParseError[] = [];
   let current: ClassNode | null = null;
+  /** Membres à analyser une fois toutes les classes connues (elles peuvent être déclarées plus bas). */
+  const memberRefs: { cls: string; member: Member; line: number }[] = [];
 
   const ensureClass = (name: string, line: number): ClassNode => {
     let node = classes.get(name);
@@ -93,7 +97,11 @@ export function parse(source: string): ParseResult {
     // 1) À l'intérieur d'un bloc { ... }
     if (current) {
       if (line === '}') current = null;
-      else current.members.push(parseMember(line));
+      else {
+        const member = parseMember(line);
+        current.members.push(member);
+        memberRefs.push({ cls: current.name, member, line: lineNo });
+      }
       continue;
     }
 
@@ -111,11 +119,11 @@ export function parse(source: string): ParseResult {
       // Héritage écrit dans le code → liaisons créées automatiquement.
       for (const parent of decl.extends) {
         ensureClass(parent, lineNo);
-        relations.push({ from: name, to: parent, kind: 'inheritance', line: lineNo, auto: true });
+        relations.push({ from: name, to: parent, kind: 'inheritance', line: lineNo, auto: true, via: 'extends' });
       }
       for (const parent of decl.implements) {
         ensureClass(parent, lineNo);
-        relations.push({ from: name, to: parent, kind: 'realization', line: lineNo, auto: true });
+        relations.push({ from: name, to: parent, kind: 'realization', line: lineNo, auto: true, via: 'implements' });
       }
       if (decl.opens) current = node;
       continue;
@@ -152,6 +160,35 @@ export function parse(source: string): ParseResult {
   const explicit = new Set(relations.filter((r) => !r.auto).map((r) => `${r.from}|${r.to}|${r.kind}`));
   const unique = relations.filter((r) => !r.auto || !explicit.has(`${r.from}|${r.to}|${r.kind}`));
 
-  const diagram: Diagram = { classes: [...classes.values()], relations: unique };
+  // Un attribut ou une méthode qui cite une autre classe la relie automatiquement :
+  //   + animal: Animal        → association dirigée (la classe « connaît » Animal)
+  //   + parle(a: Animal)      → dépendance (elle s'en sert ponctuellement)
+  // Seulement si ces deux classes ne sont pas déjà reliées (dans un sens ou dans l'autre).
+  const pair = (x: string, y: string) => (x < y ? `${x}|${y}` : `${y}|${x}`);
+  const linked = new Set(unique.map((r) => pair(r.from, r.to)));
+  const fromMembers = new Map<string, Relation>();
+  for (const { cls, member, line } of memberRefs) {
+    for (const tok of member.text.matchAll(IDENT_G)) {
+      const target = tok[0];
+      if (target === cls || !classes.has(target) || linked.has(pair(cls, target))) continue;
+      const kind = member.kind === 'attribute' ? 'directed' : 'dependency';
+      const key = `${cls}|${target}`;
+      const prev = fromMembers.get(key);
+      // Un attribut (lien durable) l'emporte sur une simple utilisation dans une méthode.
+      if (!prev || (prev.kind === 'dependency' && kind === 'directed')) {
+        fromMembers.set(key, { from: cls, to: target, kind, line, auto: true, via: 'member' });
+      }
+    }
+  }
+  // Deux classes qui se citent mutuellement : une seule liaison.
+  const memberRelations: Relation[] = [];
+  const seen = new Set<string>();
+  for (const r of fromMembers.values()) {
+    if (seen.has(pair(r.from, r.to))) continue;
+    seen.add(pair(r.from, r.to));
+    memberRelations.push(r);
+  }
+
+  const diagram: Diagram = { classes: [...classes.values()], relations: [...unique, ...memberRelations] };
   return { diagram, errors };
 }

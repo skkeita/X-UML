@@ -141,3 +141,34 @@ describe('classes jamais superposées', () => {
     expect(resolveOverlap({ x: 600, y: 600 }, { w: 140, h: 80 }, [other])).toEqual({ x: 600, y: 600 });
   });
 });
+
+describe('pas de petit décrochement', () => {
+  it('deux classes presque alignées sont reliées par un trait parfaitement droit', () => {
+    // A et B côte à côte, décalées de 4 px en hauteur, avec un autre lien qui partage le côté droit de A.
+    const boxes = { A: R(0, 0, 140, 120), B: R(400, 4, 140, 120), C: R(400, 300, 140, 80) };
+    const edges = computeEdges([rel('A', 'B', 'association', 1), rel('A', 'C', 'association', 2)], boxes);
+    const e = edges[0];
+    expect(e.points).toHaveLength(2);
+    expect(e.points[0].y).toBe(e.points[1].y);
+  });
+
+  it('un vrai décalage garde son coude', () => {
+    const [e] = computeEdges([rel('A', 'B')], { A: R(0, 0, 140, 80), B: R(400, 200, 140, 80) });
+    expect(e.points.length).toBeGreaterThan(2);
+  });
+});
+
+describe('pas de marche aux extrémités d’un contournement', () => {
+  it('le point d’arrivée glisse le long du côté pour s’aligner sur le trajet', () => {
+    // Cas réel : le lien contourne une classe et arrivait avec une marche de ~11 px.
+    const boxes = { A: R(0, 40, 180, 160), M: R(260, 0, 300, 120), S: R(640, 60, 180, 120) };
+    for (const e of computeEdges([rel('S', 'A', 'dependency' as never)], boxes)) {
+      const p = e.points;
+      for (let i = 1; i < p.length - 2; i++) {
+        const len = Math.abs(p[i + 1].x - p[i].x) + Math.abs(p[i + 1].y - p[i].y);
+        const isEndStep = i === 1 || i === p.length - 3;
+        if (isEndStep) expect(len >= 32 || p.length <= 3).toBe(true);
+      }
+    }
+  });
+});
