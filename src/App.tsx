@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { Canvas } from './components/Canvas';
 import { CodeEditor } from './components/CodeEditor';
 import { EditorModeBar, FocusPlaceholder, type EditorMode } from './components/EditorModeBar';
-import { RelationsPanel } from './components/RelationsPanel';
 import { SplitPane } from './components/SplitPane';
 import { Tabs } from './components/Tabs';
 import { Toast, type ToastData } from './components/Toast';
 import { Toolbar } from './components/Toolbar';
-import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, setColor, setCorners, setLegendVisible, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
+import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, setColor, setCorners, setLegendVisible, toIdent, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
 import { boundsOf, computeBoxes, computeFrames, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
+import { VOCABULARIES, inferDiagramType, summarize, type ElementKind } from './core/vocabulary';
+import { addElement, renameElement, setElementKind, setElementLabel, setGroupOf, setMembers, setObjectType, setParents, type MemberDraft } from './core/modelEdit';
+import { Inspector } from './components/Inspector';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
@@ -66,7 +68,7 @@ export default function App() {
   const initial = useMemo(loadProject, []);
 
   const history = useHistory<ProjectState>(() => ({
-    boards: initial?.boards ?? [newBoard('Classes', SAMPLE_SOURCE)],
+    boards: initial?.boards ?? [newBoard('Classes', SAMPLE_SOURCE, {}, 'class')],
   }));
   const { boards } = history.present;
 
@@ -99,8 +101,7 @@ export default function App() {
     }
   }, [editorMode]);
   /**
-   * Simplifié : tout s'écrit dans le code, liaisons comprises (comme au début).
-   * Personnalisé : le code ne contient que les classes ; les liaisons se règlent dans leur panneau.
+   * Code : tout s'écrit dans le script, relations comprises. Visuel : tout se construit à la souris.
    */
   const [relationMode, setRelationMode] = useState<RelationMode>(loadRelationMode);
   useEffect(() => {
@@ -143,6 +144,10 @@ export default function App() {
 
   // 3) Positions effectives : celles de l'utilisateur + placement automatique des nouvelles classes seulement.
   const positions = useMemo(() => layoutNewClasses(diagram, stored), [diagram, stored]);
+
+  // 4) Type du diagramme (choisi pour le tableau, sinon déduit) → vocabulaire de toute l'interface.
+  const diagramType = inferDiagramType(diagram, active.type);
+  const vocab = VOCABULARIES[diagramType];
 
   // --- Actions (toutes passent par l'historique) -------------------------------------------
 
@@ -226,15 +231,60 @@ export default function App() {
     [editSource],
   );
   const handleCreatePackage = useCallback(
-    (title: string, names: string[]) => editSource((src) => addPackage(src, title, names)),
-    [editSource],
+    (title: string, names: string[]) => editSource((src) => addPackage(src, title, names, vocab.group.kind)),
+    [editSource, vocab.group.kind],
   );
   const handleTypeSelection = useCallback(
     (type: DiagramType, title: string, names: string[]) => editSource((src) => addDiagramFrame(src, type, title, names)),
     [editSource],
   );
+  // --- Panneau Visuel : construire sans écrire de code ------------------------------------------
+  const setBoardType = useCallback(
+    (type: DiagramType) => history.push(onActive((b) => ({ ...b, type }))),
+    [onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const handleAddElement = useCallback(
+    (kind: ElementKind, label: string): string => {
+      const { source: next, name } = addElement(active.source, kind, label);
+      history.push(onActive((b) => ({ ...b, source: next })));
+      return name;
+    },
+    [active.source, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const handleRename = useCallback(
+    (name: string, next: string) => {
+      const renamed = renameElement(active.source, name, next);
+      if (renamed === active.source) return;
+      const id = toIdent(next);
+      // La position suit le nouveau nom : l'élément ne « saute » pas ailleurs.
+      history.push(
+        onActive((b) => {
+          const positions = { ...b.positions };
+          if (positions[name]) {
+            positions[id] = positions[name];
+            delete positions[name];
+          }
+          return { ...b, source: renamed, positions };
+        }),
+      );
+      setSelectedClass(id);
+    },
+    [active.source, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const inspectorActions = {
+    onTypeChange: setBoardType,
+    onAdd: handleAddElement,
+    onRename: handleRename,
+    onLabel: (name: string, label: string) => editSource((src) => setElementLabel(src, name, label)),
+    onKind: (name: string, kind: ElementKind) => editSource((src) => setElementKind(src, name, kind)),
+    onParents: (name: string, parents: string[], interfaces: string[]) => editSource((src) => setParents(src, name, parents, interfaces)),
+    onMembers: (name: string, members: MemberDraft[]) => editSource((src) => setMembers(src, name, members)),
+    onObjectType: (name: string, type: string) => editSource((src) => setObjectType(src, name, type)),
+    onGroup: (name: string, group: string | null) => editSource((src) => setGroupOf(src, name, group)),
+  };
+
   const handleRelationAdd = useCallback(
-    (from: string, to: string, kind: RelationKind) => editSource((src) => addRelation(src, from, to, kind)),
+    (from: string, to: string, kind: RelationKind, label?: string) => editSource((src) => addRelation(src, from, to, kind, label)),
     [editSource],
   );
 
@@ -251,7 +301,7 @@ export default function App() {
   );
 
   // L'éditeur montre le code des classes, jamais les liaisons (elles ont leur propre panneau).
-  // En mode Simplifié, l'éditeur montre aussi les liaisons (tout le script, comme au début).
+  // En mode Code, l'éditeur montre tout le script, relations comprises.
   const withRelations = relationMode === 'simple';
   const viewKey = `${relationMode}:${editorMode === 'all' ? 'all' : `class:${focusName ?? ''}`}`;
   const viewLines = useMemo(() => {
@@ -297,7 +347,7 @@ export default function App() {
   // --- Onglets ----------------------------------------------------------------------------------
   const addBoard = useCallback(
     (t: Template) => {
-      const b = newBoard(uniqueName(history.present.boards, t.name), t.source);
+      const b = newBoard(uniqueName(history.present.boards, t.name), t.source, {}, t.type);
       history.push((p) => ({ boards: [...p.boards, b] }));
       setActiveId(b.id);
     },
@@ -462,73 +512,90 @@ export default function App() {
   const classNames = useMemo(() => diagram.classes.map((c) => c.name), [diagram]);
   const implicitFocus = editorMode === 'class' && focusName && !focusActive && classNames.includes(focusName) ? focusName : null;
 
-  const editorPanel = (
-    <div className="flex h-full min-h-0 flex-col">
-      <EditorModeBar
-        mode={editorMode}
-        onModeChange={setEditorMode}
-        focusName={editorMode === 'class' && viewLines.length > 0 ? focusName : null}
-        lineCount={viewLines.length}
-        totalLines={withRelations ? source.split('\n').length : codeLines(source).length}
-      />
-      <div className="min-h-0 flex-1">
-        {editorMode === 'all' || focusActive ? (
-          <CodeEditor
-            key={editorMode}
-            value={focusText(source, viewLines)}
-            onChange={onViewChange}
-            errors={result.errors}
-            lineNumbers={viewLines.map((i) => i + 1)}
-            highlightLines={highlightLines}
-            revealLine={editorMode === 'all' ? reveal : null}
-            placeholder={editorMode === 'all' ? 'class Animal { + nom: string }' : `class ${focusName} { … }`}
-            diagram={diagram}
-          />
-        ) : (
-          <FocusPlaceholder
-            missing={implicitFocus ? null : focusName}
-            implicit={implicitFocus}
-            onDeclare={declareClass}
-            onShowAll={() => setEditorMode('all')}
-          />
-        )}
-      </div>
-      {relationMode === 'custom' && (
-      <RelationsPanel
-        relations={diagram.relations}
-        classNames={classNames}
-        filter={editorMode === 'class' ? focusName : null}
-        onChange={handleRelationChange}
-        onDelete={handleRelationDelete}
-        onAdd={handleRelationAdd}
-      />
-      )}
-      <footer
-        className={`shrink-0 border-t px-3 py-2 text-xs ${
-          hasErrors
-            ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300'
-            : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
-        }`}
-        role="status"
-      >
-        {hasErrors ? (
-          <>
-            <p className="font-medium">
-              Ligne {result.errors[0].line} : {result.errors[0].message}
-              {result.errors.length > 1 && ` (+${result.errors.length - 1})`}
-            </p>
-            <p className="opacity-80">Le dernier rendu valide est conservé.</p>
-          </>
-        ) : (
-          <p>
-            {diagram.classes.length} élément{diagram.classes.length > 1 ? 's' : ''} · {diagram.relations.length} relation
-            {diagram.relations.length > 1 ? 's' : ''}
-            {diagram.groups?.length ? ` · ${diagram.groups.length} groupe${diagram.groups.length > 1 ? 's' : ''}` : ''}
+  const footer = (
+    <footer
+      className={`shrink-0 border-t px-3 py-2 text-xs ${
+        hasErrors
+          ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300'
+          : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400'
+      }`}
+      role="status"
+    >
+      {hasErrors ? (
+        <>
+          <p className="font-medium">
+            Ligne {result.errors[0].line} : {result.errors[0].message}
+            {result.errors.length > 1 && ` (+${result.errors.length - 1})`}
           </p>
-        )}
-      </footer>
-    </div>
+          <p className="opacity-80">Le dernier rendu valide est conservé.</p>
+        </>
+      ) : (
+        <p>
+          {summarize(vocab, diagram)}
+          {diagram.groups?.length ? ` · ${diagram.groups.length} cadre${diagram.groups.length > 1 ? 's' : ''}` : ''}
+        </p>
+      )}
+    </footer>
   );
+
+  const editorPanel =
+    relationMode === 'custom' ? (
+      // Mode Visuel : tout se construit avec des menus et des champs, sans une ligne de code.
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1">
+          <Inspector
+            diagram={diagram}
+            vocab={vocab}
+            chosenType={active.type}
+            selected={selectedClass}
+            onSelect={(name) => setSelectedClass(name)}
+            {...inspectorActions}
+            onColor={handleColor}
+            onDelete={handleDeleteNodes}
+            onDuplicate={handleDuplicate}
+            onRelationChange={handleRelationChange}
+            onRelationDelete={handleRelationDelete}
+            onRelationAdd={handleRelationAdd}
+          />
+        </div>
+        {footer}
+      </div>
+    ) : (
+      <div className="flex h-full min-h-0 flex-col">
+        <EditorModeBar
+          mode={editorMode}
+          onModeChange={setEditorMode}
+          focusName={editorMode === 'class' && viewLines.length > 0 ? focusName : null}
+          lineCount={viewLines.length}
+          totalLines={withRelations ? source.split('\n').length : codeLines(source).length}
+          vocab={vocab}
+        />
+        <div className="min-h-0 flex-1">
+          {editorMode === 'all' || focusActive ? (
+            <CodeEditor
+              key={editorMode}
+              value={focusText(source, viewLines)}
+              onChange={onViewChange}
+              errors={result.errors}
+              lineNumbers={viewLines.map((i) => i + 1)}
+              highlightLines={highlightLines}
+              revealLine={editorMode === 'all' ? reveal : null}
+              placeholder={editorMode === 'all' ? 'class Animal { + nom: string }' : `class ${focusName} { … }`}
+              diagram={diagram}
+            />
+          ) : (
+            <FocusPlaceholder
+              missing={implicitFocus ? null : focusName}
+              implicit={implicitFocus}
+              onDeclare={declareClass}
+              onShowAll={() => setEditorMode('all')}
+              vocab={vocab}
+            />
+          )}
+        </div>
+        {footer}
+      </div>
+    );
 
   return (
     <div
@@ -589,6 +656,7 @@ export default function App() {
             onRelationDelete={handleRelationDelete}
             onRelationAdd={handleRelationAdd}
             onSelectClass={handleSelectClass}
+            selectedName={relationMode === 'custom' ? selectedClass : undefined}
             onDrop={handleDrop}
             onDeleteNodes={handleDeleteNodes}
             onDuplicate={handleDuplicate}
@@ -596,6 +664,12 @@ export default function App() {
             onCreatePackage={handleCreatePackage}
             onTypeSelection={handleTypeSelection}
             fitKey={fitKey}
+            vocab={vocab}
+            emptyHint={
+              relationMode === 'custom'
+                ? `Ajoutez ${vocab.create[0]?.withArticle ?? 'un élément'} depuis le panneau de gauche pour commencer`
+                : undefined
+            }
             focus={focusActive ? focusName : null}
           />
         }

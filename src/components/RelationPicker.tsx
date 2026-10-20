@@ -1,5 +1,5 @@
-import { RELATION_CHOICES } from '../core/edit';
 import type { RelationKind } from '../core/types';
+import type { RelationChoice } from '../core/vocabulary';
 
 interface Props {
   /** Position écran (px, relative au canevas) où ancrer le panneau. */
@@ -10,9 +10,11 @@ interface Props {
   from: string;
   /** null : la cible sera choisie ensuite, d'un clic sur une classe. */
   to: string | null;
-  /** Type actuel (édition d'un lien existant) ; absent lors d'une création. */
-  current?: RelationKind;
-  onPick: (kind: RelationKind) => void;
+  /** Options proposées, dans le vocabulaire du diagramme affiché. */
+  choices: RelationChoice[];
+  /** Option actuelle (édition d'un lien existant) ; absente lors d'une création. */
+  current?: RelationChoice;
+  onPick: (choice: RelationChoice) => void;
   /** Actions d'édition, uniquement pour un lien existant. */
   onReverse?: () => void;
   onDelete?: () => void;
@@ -52,23 +54,23 @@ const PANEL_W = 264;
  * Panneau contextuel affiché au clic sur un lien.
  * UX : choix visuel (aperçu de la flèche) + raccourcis 1–7, R (inverser), Suppr, Échap.
  */
-export function RelationPicker({ x, y, bounds, from, to, current, onPick, onReverse, onDelete, onClose }: Props) {
+export function RelationPicker({ x, y, bounds, from, to, choices, current, onPick, onReverse, onDelete, onClose }: Props) {
   // Hauteur approximative (7 lignes + en-tête + pied) : suffit pour décider de l'ouvrir au-dessus.
-  const panelH = onReverse || onDelete ? 330 : to ? 290 : 320;
+  const panelH = choices.length * 34 + (onReverse || onDelete ? 92 : to ? 52 : 82);
   const left = Math.min(Math.max(8, x - PANEL_W / 2), Math.max(8, bounds.w - PANEL_W - 8));
   const below = y + 14;
   const top = below + panelH <= bounds.h - 8 ? below : Math.max(8, y - 14 - panelH);
   return (
     <div
       role="dialog"
-      aria-label="Type de lien"
+      aria-label="Type de relation"
       onPointerDown={(e) => e.stopPropagation()}
       className="absolute z-10 rounded-xl border border-slate-200 bg-white/95 p-1.5 text-sm shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
       style={{ left, top, width: PANEL_W }}
     >
       <div className="flex items-center justify-between px-2 pb-1.5 pt-1 text-xs text-slate-500 dark:text-slate-400">
         <span className="truncate">
-          {current === undefined && <span className="mr-1 font-sans font-medium text-indigo-600 dark:text-indigo-400">Nouveau lien</span>}
+          {current === undefined && <span className="mr-1 font-sans font-medium text-indigo-600 dark:text-indigo-400">Nouvelle relation</span>}
           <span className="font-mono">
             {from} → {to ?? '?'}
           </span>
@@ -79,13 +81,13 @@ export function RelationPicker({ x, y, bounds, from, to, current, onPick, onReve
       </div>
 
       <ul className="flex flex-col">
-        {RELATION_CHOICES.map((c, i) => {
-          const active = c.kind === current;
+        {choices.map((c, i) => {
+          const active = c.id === current?.id;
           return (
-            <li key={c.kind}>
+            <li key={c.id}>
               <button
                 type="button"
-                onClick={() => onPick(c.kind)}
+                onClick={() => onPick(c)}
                 title={c.hint}
                 aria-pressed={active}
                 className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors ${
@@ -104,7 +106,7 @@ export function RelationPicker({ x, y, bounds, from, to, current, onPick, onReve
       </ul>
 
       {!to && (
-        <p className="px-2 pb-1 pt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Choisissez une flèche, puis cliquez sur la classe cible.</p>
+        <p className="px-2 pb-1 pt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Choisissez le type de relation, puis cliquez sur la cible.</p>
       )}
 
       {(onReverse || onDelete) && (
@@ -113,12 +115,12 @@ export function RelationPicker({ x, y, bounds, from, to, current, onPick, onReve
           ⇄ Inverser
         </button>
         {onDelete ? (
-          <button type="button" onClick={onDelete} title="Supprimer le lien (Suppr)" className="flex-1 rounded-md px-2 py-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">
+          <button type="button" onClick={onDelete} title="Supprimer la relation (Suppr)" className="flex-1 rounded-md px-2 py-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">
             Supprimer
           </button>
         ) : (
-          <span className="flex-1 self-center px-2 text-center text-[10.5px] leading-tight text-slate-400" title="Ce lien vient du type utilisé dans un attribut ou une méthode">
-            ⚡ lien déduit du code
+          <span className="flex-1 self-center px-2 text-center text-[10.5px] leading-tight text-slate-400" title="Relation déduite du type d’un attribut ou d’une opération">
+            ⚡ déduite du code
           </span>
         )}
       </div>

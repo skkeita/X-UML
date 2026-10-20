@@ -26,6 +26,6 @@ class Personne {
   + adopter(a: Animal): void
 }
 
-// Les autres liaisons : panneau « Liaisons » (mode Personnalisé) ou ici (mode Simplifié)
+// Les autres relations s’écrivent ici, ou se règlent à la souris en mode Visuel (sans code)
 Personne --> Animal : adopte
 `;

@@ -43,6 +43,9 @@ export interface RelationChange {
   to?: string;
   /** Nouveau libellé ; chaîne vide = supprimer le libellé. */
   label?: string;
+  /** Multiplicités (« 1 », « 0..* ») ; chaîne vide = la retirer. */
+  multFrom?: string;
+  multTo?: string;
 }
 
 interface ParsedLine {
@@ -108,7 +111,9 @@ export function updateRelation(source: string, ref: RelationRef, change: Relatio
   const to = change.to ?? p.to;
   const [a, b] = change.reverse ? [to, from] : [from, to];
   // Inverser le sens échange aussi les multiplicités.
-  const [ma, mb] = change.reverse ? [p.multTo, p.multFrom] : [p.multFrom, p.multTo];
+  const mf = change.multFrom !== undefined ? change.multFrom.trim().replace(/"/g, '') || undefined : p.multFrom;
+  const mt = change.multTo !== undefined ? change.multTo.trim().replace(/"/g, '') || undefined : p.multTo;
+  const [ma, mb] = change.reverse ? [mt, mf] : [mf, mt];
   const text = change.label !== undefined ? change.label.trim() : p.label;
   // Devenue un héritage / une réalisation (sans libellé) : elle rejoint la déclaration de la classe.
   if ((kind === 'inheritance' || kind === 'realization') && !text && !ma && !mb && a !== b) {
@@ -276,10 +281,10 @@ function appendLine(source: string, line: string): string {
 }
 
 /** Regroupe des éléments dans un package (dessiné comme un dossier autour d'eux). */
-export function addPackage(source: string, title: string, members: string[]): string {
-  const id = toIdent(title || 'Package');
+export function addPackage(source: string, title: string, members: string[], kind: 'package' | 'system' = 'package'): string {
+  const id = toIdent(title || (kind === 'system' ? 'Systeme' : 'Paquetage'));
   const label = id === title.trim() ? '' : ` "${title.trim()}"`;
-  return appendLine(source, `package ${id}${label} : ${members.join(', ')}`);
+  return appendLine(source, `${kind} ${id}${label} : ${members.join(', ')}`);
 }
 
 /** « Type » une sélection : cadre de diagramme UML (uc, ctx, pkg, com, class) autour des éléments. */
