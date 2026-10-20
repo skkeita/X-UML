@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DiagramScene } from '../components/DiagramScene';
-import { boundsOf, sceneFromBoxes } from '../core/layout';
+import { boundsOf, legendBox, sceneFromBoxes } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
 import type { Diagram, Rect } from '../core/types';
 
@@ -17,7 +17,8 @@ export function buildSvg(diagram: Diagram, boxes: Record<string, Rect>, theme: S
   const { edges, frames } = sceneFromBoxes(diagram, boxes);
   const extra = edges.flatMap((e) => [...e.points, e.label]).map((p) => ({ x: p.x - 30, y: p.y - 10, w: 60, h: 20 }));
   // Un acteur a un nom qui peut déborder de sa boîte : on garde une marge latérale.
-  const b = boundsOf([...Object.values(boxes), ...Object.values(frames), ...extra]) ?? { x: 0, y: 0, w: 200, h: 100 };
+  const legend = legendBox(diagram, [...Object.values(boxes), ...Object.values(frames)]);
+  const b = boundsOf([...Object.values(boxes), ...Object.values(frames), ...extra, ...(legend ? [legend] : [])]) ?? { x: 0, y: 0, w: 200, h: 100 };
   const x = b.x - PADDING;
   const y = b.y - PADDING;
   const w = b.w + PADDING * 2;

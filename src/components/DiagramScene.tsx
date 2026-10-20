@@ -2,17 +2,20 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   FONT_FAMILY,
   FONT_SIZE,
+  LEGEND_ROW,
+  type LegendBox,
   ROW_H,
   compartmentHeight,
   computeEdges,
   displayName,
   type EdgeGeometry,
   headerHeight,
+  legendBox,
   memberLabel,
   splitMembers,
 } from '../core/layout';
 import { multPosition } from '../core/routing';
-import type { SceneTheme } from '../core/theme';
+import { tinted, type SceneTheme } from '../core/theme';
 import type { ClassNode, Diagram, DiagramType, Group, Point, Rect, Relation, RelationKind } from '../core/types';
 
 /*
@@ -98,7 +101,7 @@ function ClassBox({
   const headH = headerHeight(node);
   const attrsH = compartmentHeight(attrs.length);
   const { w, h } = rect;
-  const r = 6;
+  const r = 6 * (theme.corner ?? 1);
   const text = { fontFamily: FONT_FAMILY, fontSize: FONT_SIZE, fill: theme.text } as const;
   const active = selected || highlighted;
   const stroke = active ? theme.accent : theme.boxStroke;
@@ -151,7 +154,7 @@ function ClassBox({
       case 'object':
         return (
           <>
-            <rect width={w} height={h} rx={3} fill={theme.boxFill} stroke={stroke} strokeWidth={sw} data-shape="object" />
+            <rect width={w} height={h} rx={3 * (theme.corner ?? 1)} fill={theme.boxFill} stroke={stroke} strokeWidth={sw} data-shape="object" />
             <text x={w / 2} y={h / 2 + 4} textAnchor="middle" {...text} fontSize={12.5} fontWeight={600} textDecoration="underline">
               {name}
             </text>
@@ -160,7 +163,7 @@ function ClassBox({
       case 'system':
         return (
           <>
-            <rect width={w} height={h} rx={4} fill={theme.headerFill} stroke={stroke} strokeWidth={active ? 2.4 : 1.8} data-shape="system" />
+            <rect width={w} height={h} rx={4 * (theme.corner ?? 1)} fill={theme.headerFill} stroke={stroke} strokeWidth={active ? 2.4 : 1.8} data-shape="system" />
             <text x={w / 2} y={26} textAnchor="middle" {...text} fill={theme.muted} fontSize={11}>
               «système»
             </text>
@@ -174,7 +177,7 @@ function ClassBox({
         return (
           <>
             <path d={`M 0 16 V 2 Q 0 0 2 0 H ${tabW - 2} Q ${tabW} 0 ${tabW} 2 V 16`} fill={theme.headerFill} stroke={stroke} strokeWidth={sw} />
-            <rect y={16} width={w} height={h - 16} rx={2} fill={theme.boxFill} stroke={stroke} strokeWidth={sw} data-shape="package" />
+            <rect y={16} width={w} height={h - 16} rx={2 * (theme.corner ?? 1)} fill={theme.boxFill} stroke={stroke} strokeWidth={sw} data-shape="package" />
             <text x={w / 2} y={16 + (h - 16) / 2 + 5} textAnchor="middle" {...text} fontSize={13} fontWeight={700}>
               {name}
             </text>
@@ -273,11 +276,14 @@ function GroupFrame({
   group,
   rect,
   theme,
+  colored,
   onPointerDown,
 }: {
   group: Group;
   rect: Rect;
   theme: SceneTheme;
+  /** Groupe coloré (« color ») : fond teinté. */
+  colored?: boolean;
   onPointerDown?: (e: ReactPointerEvent<SVGGElement>) => void;
 }) {
   const { x, y, w, h } = rect;
@@ -287,7 +293,7 @@ function GroupFrame({
     const tabW = Math.min(Math.max(group.title.length * 8 + 24, 70), w);
     return (
       <g data-group={group.name} data-group-kind="package">
-        <rect x={x} y={y + 22} width={w} height={h - 22} rx={3} fill={theme.headerFill} fillOpacity={0.25} stroke={theme.muted} strokeWidth={1.3} />
+        <rect x={x} y={y + 22} width={w} height={h - 22} rx={3 * (theme.corner ?? 1)} fill={theme.headerFill} fillOpacity={0.25} stroke={theme.muted} strokeWidth={1.3} />
         <g {...grab}>
           <path d={`M ${x} ${y + 22} V ${y + 3} Q ${x} ${y} ${x + 3} ${y} H ${x + tabW - 3} Q ${x + tabW} ${y} ${x + tabW} ${y + 3} V ${y + 22}`} fill={theme.headerFill} stroke={theme.muted} strokeWidth={1.3} />
           <text x={x + 10} y={y + 16} {...text} fontSize={12} fontWeight={700}>
@@ -300,7 +306,7 @@ function GroupFrame({
   if (group.kind === 'system') {
     return (
       <g data-group={group.name} data-group-kind="system">
-        <rect x={x} y={y} width={w} height={h} rx={6} fill="none" stroke={theme.muted} strokeWidth={1.6} />
+        <rect x={x} y={y} width={w} height={h} rx={6 * (theme.corner ?? 1)} fill={colored ? theme.headerFill : 'none'} fillOpacity={0.18} stroke={theme.muted} strokeWidth={1.6} />
         <g {...grab}>
           <rect x={x} y={y} width={w} height={26} fill="transparent" />
           <text x={x + w / 2} y={y + 18} textAnchor="middle" {...text} fontSize={13} fontWeight={700}>
@@ -314,7 +320,7 @@ function GroupFrame({
   const tw = Math.min(tag.length * 7.2 + 22, w);
   return (
     <g data-group={group.name} data-group-kind="frame">
-      <rect x={x} y={y} width={w} height={h} fill="none" stroke={theme.edge} strokeWidth={1.3} />
+      <rect x={x} y={y} width={w} height={h} fill={colored ? theme.headerFill : 'none'} fillOpacity={0.14} stroke={theme.edge} strokeWidth={1.3} />
       <g {...grab}>
         <path d={`M ${x} ${y} H ${x + tw} V ${y + 14} L ${x + tw - 8} ${y + 22} H ${x} Z`} fill={theme.headerFill} stroke={theme.edge} strokeWidth={1.3} />
         <text x={x + 8} y={y + 15} {...text} fontSize={11.5} fontWeight={600}>
@@ -354,6 +360,11 @@ export function DiagramScene({
     }
   }
   const DIM = 0.28;
+  // Apparence décrite dans le code : coins (carrés / arrondis) et couleur propre à chaque élément.
+  const st = diagram.style;
+  const base: SceneTheme = st?.corners === 'square' ? { ...theme, corner: 0 } : theme;
+  const themeFor = (name: string) => (st?.colors[name] ? tinted(base, st.colors[name]) : base);
+  const legend = legendBox(diagram, [...Object.values(boxes), ...Object.values(frames)]);
 
   return (
     <>
@@ -375,13 +386,13 @@ export function DiagramScene({
       {/* Cadres de groupes, tout au fond */}
       <g>
         {groups.map((g) => (
-          <GroupFrame key={g.name} group={g} rect={frames[g.name]} theme={theme} onPointerDown={onFramePointerDown ? (e) => onFramePointerDown(g, e) : undefined} />
+          <GroupFrame key={g.name} group={g} rect={frames[g.name]} theme={themeFor(g.name)} colored={!!st?.colors[g.name]} onPointerDown={onFramePointerDown ? (e) => onFramePointerDown(g, e) : undefined} />
         ))}
       </g>
 
       {/* Liens sous les boîtes : une boîte déplacée masque proprement les traits qui passent derrière */}
       <g fill="none" stroke={theme.edge} strokeWidth={1.4}>
-        {edges.map(({ relation, d, label, points }, i) => {
+        {edges.map(({ relation, d, label, points, inset }, i) => {
           const m = markerFor(relation.kind);
           const isSelected = selectedEdge === relation.line;
           return (
@@ -423,7 +434,7 @@ export function DiagramScene({
                 [relation.multTo, 'end'],
               ].map(([m, end]) => {
                 if (!m || points.length < 2) return null;
-                const at = multPosition(points, end as 'start' | 'end');
+                const at = multPosition(points, end as 'start' | 'end', inset?.[end as 'start' | 'end'] ?? 0);
                 return (
                   <text key={end} x={at.x} y={at.y} textAnchor="middle" fill={theme.text} stroke={theme.bg} strokeWidth={3} paintOrder="stroke" fontFamily={FONT_FAMILY} fontSize={11} data-mult={end}>
                     {m}
@@ -444,7 +455,7 @@ export function DiagramScene({
             <ClassBox
               node={c}
               rect={rect}
-              theme={theme}
+              theme={themeFor(c.name)}
               selected={selected === c.name || !!selection?.has(c.name)}
               highlighted={highlighted === c.name}
               onPointerDown={onBoxPointerDown ? (e) => onBoxPointerDown(c.name, e) : undefined}
@@ -454,6 +465,33 @@ export function DiagramScene({
           );
         })}
       </g>
+
+      {legend && <Legend box={legend} theme={base} />}
     </>
+  );
+}
+
+/** Légende : une pastille par couleur libellée (incluse dans les exports SVG / PDF). */
+function Legend({ box, theme }: { box: LegendBox; theme: SceneTheme }) {
+  const { x, y, w, h } = box;
+  const r = 6 * (theme.corner ?? 1);
+  return (
+    <g data-legend="" fontFamily={FONT_FAMILY}>
+      <rect x={x} y={y} width={w} height={h} rx={r} fill={theme.boxFill} stroke={theme.boxStroke} strokeWidth={1.2} />
+      <text x={x + 12} y={y + 20} fill={theme.text} fontSize={12} fontWeight={700}>
+        {box.title}
+      </text>
+      {box.entries.map((e, i) => {
+        const ry = y + 30 + i * LEGEND_ROW;
+        return (
+          <g key={`${e.color}-${e.label}`} data-legend-entry={e.label}>
+            <rect x={x + 12} y={ry + 3} width={16} height={14} rx={3 * (theme.corner ?? 1)} fill={e.color} stroke={tinted(theme, e.color).boxStroke} strokeWidth={1} />
+            <text x={x + 38} y={ry + 14.5} fill={theme.text} fontSize={12}>
+              {e.label}
+            </text>
+          </g>
+        );
+      })}
+    </g>
   );
 }

@@ -33,3 +33,9 @@ describe('fichier de projet (plusieurs tableaux)', () => {
     expect(exportFileName(new Date(2026, 9, 5))).toBe('x-uml-2026-10-05.json');
   });
 });
+
+describe('réimport du code exporté', () => {
+  it('le tableau reprend le nom de l’onglet, pas la date', () => {
+    expect(parseProjectFile('class A', 'x-uml-2026-10-20-classes.txt')).toMatchObject({ ok: true, boards: [{ name: 'classes', source: 'class A' }] });
+  });
+});

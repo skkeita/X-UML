@@ -4,6 +4,7 @@ const IDENT_G = new RegExp(IDENT, 'gu');
 import type {
   ClassNode,
   Diagram,
+  DiagramStyle,
   DiagramType,
   Group,
   Member,
@@ -88,6 +89,32 @@ const GROUP = new RegExp(`^(package|system)\\s+(${IDENT})(?:\\s+"([^"]*)")?\\s*:
 /** Cadre de diagramme typé. */
 const FRAME = new RegExp(`^diagram\\s+(class|usecase|context|package|communication)(?:\\s+"([^"]*)")?\\s*:\\s*(${LIST})$`, 'u');
 
+/** Couleurs nommées (teintes claires : le texte reste lisible dessus). */
+export const NAMED_COLORS: Record<string, string> = {
+  rouge: '#fecaca',
+  orange: '#fed7aa',
+  jaune: '#fef08a',
+  vert: '#bbf7d0',
+  cyan: '#a5f3fc',
+  bleu: '#bfdbfe',
+  violet: '#ddd6fe',
+  rose: '#fbcfe8',
+  gris: '#e2e8f0',
+};
+const COLOR_VALUE = `#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|${Object.keys(NAMED_COLORS).join('|')}`;
+/** color A, B #fca5a5 "Libellé de légende" */
+const COLOR = new RegExp(`^colou?r\\s+(${LIST})\\s+(${COLOR_VALUE})(?:\\s+"([^"]*)")?$`, 'iu');
+const STYLE = /^style\s+(rounded|square|arrondi|carr[ée])$/iu;
+const LEGEND = /^legend(?:e)?(?:\s+"([^"]*)"|\s+(off|aucune))?$/iu;
+
+/** #abc → #aabbcc, nom → hex, en minuscules. */
+export function normalizeColor(v: string): string {
+  const named = NAMED_COLORS[v.toLowerCase()];
+  if (named) return named;
+  const h = v.toLowerCase();
+  return h.length === 4 ? `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}` : h;
+}
+
 const FRAME_TITLE: Record<DiagramType, string> = {
   class: 'Diagramme de classes',
   usecase: 'Cas d’utilisation',
@@ -136,6 +163,8 @@ export function parse(source: string): ParseResult {
   const memberRefs: { cls: string; member: Member; line: number }[] = [];
 
   const groups: Group[] = [];
+  const style: DiagramStyle = { colors: {}, legend: [], corners: 'rounded' };
+  let styled = false;
   const ensureClass = (name: string, line: number, implicit = false): ClassNode => {
     let node = classes.get(name);
     if (!node) {
@@ -159,6 +188,31 @@ export function parse(source: string): ParseResult {
         current.members.push(member);
         memberRefs.push({ cls: current.name, member, line: lineNo });
       }
+      continue;
+    }
+
+    // 2) Apparence : couleurs (et légende), coins, légende
+    const color = COLOR.exec(line);
+    if (color) {
+      const [, list, value, label] = color;
+      const hex = normalizeColor(value);
+      for (const n of list.split(',').map((m) => m.trim())) style.colors[n] = hex;
+      const l = label?.trim();
+      if (l && !style.legend.some((e) => e.color === hex && e.label === l)) style.legend.push({ color: hex, label: l });
+      styled = true;
+      continue;
+    }
+    const st = STYLE.exec(line);
+    if (st) {
+      style.corners = /^(rounded|arrondi)$/i.test(st[1]) ? 'rounded' : 'square';
+      styled = true;
+      continue;
+    }
+    const lg = LEGEND.exec(line);
+    if (lg) {
+      if (lg[2]) style.legendHidden = true;
+      else if (lg[1] !== undefined) style.legendTitle = lg[1];
+      styled = true;
       continue;
     }
 
@@ -300,5 +354,6 @@ export function parse(source: string): ParseResult {
 
   const diagram: Diagram = { classes: [...classes.values()], relations: [...unique, ...memberRelations] };
   if (groups.length) diagram.groups = groups;
+  if (styled) diagram.style = style;
   return { diagram, errors };
 }

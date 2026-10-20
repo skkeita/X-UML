@@ -51,6 +51,9 @@ export function parseProjectFile(text: string, fileName = ''): ImportResult {
     .split(/\r?\n/)
     .filter((l) => !/^\s*@(start|end)uml\b/i.test(l))
     .join('\n');
-  const name = fileName.replace(/\.[^.]+$/, '') || 'Importé';
+  // « x-uml-2026-10-20-cas-d-utilisation.txt » (notre export de code) → « cas d utilisation ».
+  const bare = fileName.replace(/\.[^.]+$/, '');
+  const ours = /^x-uml-\d{4}-\d{2}-\d{2}-(.+)$/.exec(bare);
+  const name = (ours ? ours[1].replace(/-/g, ' ') : bare) || 'Importé';
   return { ok: true, boards: [newBoard(name, source)] };
 }

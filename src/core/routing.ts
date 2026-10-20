@@ -20,6 +20,8 @@ export interface EdgeGeometry {
   /** Points du tracé (utile pour les tests et le placement des libellés). */
   points: Point[];
   label: Point;
+  /** Distance dont chaque extrémité a été ramenée à l'intérieur de la boîte (acteur) : les multiplicités restent dehors. */
+  inset?: { start?: number; end?: number };
 }
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
@@ -576,12 +578,13 @@ function foreignZones(edges: EdgeGeometry[], self: number): Zone[] {
 }
 
 /** Position d'une multiplicité près d'une extrémité (à côté du trait, jamais dessus). */
-export function multPosition(pts: Point[], end: 'start' | 'end'): Point {
+export function multPosition(pts: Point[], end: 'start' | 'end', inset = 0): Point {
   const [p, q] = end === 'start' ? [pts[0], pts[1]] : [pts[pts.length - 1], pts[pts.length - 2]];
   const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
   const dx = (q.x - p.x) / len;
   const dy = (q.y - p.y) / len;
-  return { x: p.x + dx * 18 - dy * 11, y: p.y + dy * 18 + dx * 11 + 4 };
+  const a = 18 + inset;
+  return { x: p.x + dx * a - dy * 11, y: p.y + dy * a + dx * 11 + 4 };
 }
 
 /** Zone occupée par le texte d'une multiplicité (ligne de base en `at.y`). */
@@ -867,6 +870,7 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>,
   const shapes = opts.shapes ?? {};
   edges.forEach((e, i) => {
     const pts = e.points.map((p) => ({ ...p }));
+    const insets: { start?: number; end?: number } = {};
     const fit = (end: 0 | 1, name: string) => {
       const shape = shapes[name];
       const r = boxes[name];
@@ -887,16 +891,34 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>,
           const dx = rx * Math.sqrt(1 - ((p.y - cy) / ry) ** 2);
           p.x = p.x < cx ? cx - dx : cx + dx;
         }
-      } else if (!vertical && p.y > r.y + 18 && p.y < r.y + 70) {
-        // Acteur : le trait s'arrête au bout des bras / du corps, pas au bord de la zone du nom.
-        p.x = p.x < cx ? cx - 18 : cx + 18;
+      } else if (!vertical) {
+        // Acteur : le trait arrive à hauteur du buste et touche le corps du bonhomme,
+        // sinon il s'arrête dans le vide (entre un bras et une jambe) et semble non relié.
+        const q = pts[n];
+        const lo = r.y + 24;
+        const hi = r.y + 46;
+        const y = Math.min(hi, Math.max(lo, p.y));
+        // On peut déplacer le dernier segment horizontal si le précédent est vertical (il s'allonge).
+        const prev = pts.length >= 3 ? pts[end === 0 ? 2 : pts.length - 3] : null;
+        if (y !== p.y && prev && Math.abs(prev.x - q.x) < 0.01) {
+          p.y = y;
+          q.y = y;
+        }
+        const before = p.x;
+        if (p.y >= r.y + 21 && p.y <= r.y + 50) p.x = cx;
+        else if (p.y > r.y + 50 && p.y < r.y + 70) p.x = cx + (p.x < cx ? -1 : 1) * (14 * (p.y - r.y - 50)) / 20;
+        else if (p.y > r.y + 3 && p.y < r.y + 21) p.x = cx + (p.x < cx ? -1 : 1) * Math.sqrt(Math.max(0, 81 - (p.y - r.y - 12) ** 2));
+        // Les multiplicités se placent depuis le bord de la boîte, pas depuis le corps (elles chevaucheraient les bras).
+        insets[end === 0 ? 'start' : 'end'] = Math.max(0, Math.abs(before - p.x) - 4);
       } else if (vertical && p.y < cy) {
-        p.y = r.y + 2;
+        p.y = r.y + 3; // sommet de la tête
+      } else if (vertical) {
+        p.y = r.y + r.h - 3; // juste sous le nom (pas d'espace vide entre le trait et l'acteur)
       }
     };
     fit(0, e.relation.from);
     fit(1, e.relation.to);
-    if (pts.some((p, j) => p.x !== e.points[j].x || p.y !== e.points[j].y)) edges[i] = { ...e, points: pts, d: toPath(pts) };
+    if (pts.some((p, j) => p.x !== e.points[j].x || p.y !== e.points[j].y)) edges[i] = { ...e, points: pts, d: toPath(pts), inset: insets };
   });
   return edges;
 }

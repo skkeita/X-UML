@@ -7,7 +7,7 @@ import { SplitPane } from './components/SplitPane';
 import { Tabs } from './components/Tabs';
 import { Toast, type ToastData } from './components/Toast';
 import { Toolbar } from './components/Toolbar';
-import { addDiagramFrame, addPackage, addRelation, deleteNodes, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
+import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, setColor, setCorners, setLegendVisible, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
 import { boundsOf, computeBoxes, computeFrames, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
@@ -207,6 +207,24 @@ export default function App() {
   );
   const handleRelationDelete = useCallback((ref: RelationRef) => editSource((src) => deleteRelation(src, ref)), [editSource]);
   const handleDeleteNodes = useCallback((names: string[]) => editSource((src) => deleteNodes(src, names)), [editSource]);
+  /** Duplique la sélection : copies décalées en diagonale (on voit tout de suite qu'il y en a deux), puis sélectionnées. */
+  const handleDuplicate = useCallback(
+    (names: string[]): string[] => {
+      const { source: next, renames } = duplicateNodes(active.source, names);
+      const moved: Record<string, Point> = {};
+      for (const [from, to] of Object.entries(renames)) {
+        const p = positions[from];
+        if (p) moved[to] = { x: p.x + 40, y: p.y + 40 };
+      }
+      history.push(onActive((b) => ({ ...b, source: next, positions: { ...b.positions, ...moved } })));
+      return Object.values(renames);
+    },
+    [active.source, positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const handleColor = useCallback(
+    (names: string[], color: string | null, label: string) => editSource((src) => setColor(src, names, color, label)),
+    [editSource],
+  );
   const handleCreatePackage = useCallback(
     (title: string, names: string[]) => editSource((src) => addPackage(src, title, names)),
     [editSource],
@@ -305,6 +323,13 @@ export default function App() {
         }),
     [projectBoards, active.id, diagram, positions],
   );
+  /** Export du code : le script de chaque tableau choisi, en texte brut (réimportable tel quel). */
+  const exportCode = (ids?: string[]) => {
+    const list = ids ? projectBoards.filter((b) => ids.includes(b.id)) : projectBoards.filter((b) => b.id === active.id);
+    list.forEach((b, i) =>
+      window.setTimeout(() => downloadText(`${dated}-${slug(b.name)}.txt`, b.source.endsWith('\n') ? b.source : `${b.source}\n`, 'text/plain'), i * 300),
+    );
+  };
   const exportSvg = (ids?: string[]) => {
     const list = boardsFor(ids);
     // Un fichier par tableau ; léger décalage pour que le navigateur accepte les téléchargements successifs.
@@ -533,6 +558,7 @@ export default function App() {
         boards={boards.map((b) => ({ id: b.id, name: b.name }))}
         activeId={active.id}
         onExportSvg={exportSvg}
+        onExportCode={exportCode}
         onDownloadProject={downloadProject}
         onImport={() => fileInput.current?.click()}
         onExportPdf={(ids) => void downloadPdf(ids)}
@@ -543,6 +569,11 @@ export default function App() {
         canRedo={history.canRedo}
         relationMode={relationMode}
         onRelationModeChange={setRelationMode}
+        corners={diagram.style?.corners ?? 'rounded'}
+        onCornersChange={(c) => editSource((src) => setCorners(src, c))}
+        legendCount={diagram.style?.legend.length ?? 0}
+        legendVisible={!diagram.style?.legendHidden}
+        onLegendVisibleChange={(v) => editSource((src) => setLegendVisible(src, v))}
       />
       <Tabs boards={boards} activeId={active.id} onSelect={setActiveId} onAdd={addBoard} onRename={renameBoard} onClose={closeBoard} />
       <SplitPane
@@ -560,6 +591,8 @@ export default function App() {
             onSelectClass={handleSelectClass}
             onDrop={handleDrop}
             onDeleteNodes={handleDeleteNodes}
+            onDuplicate={handleDuplicate}
+            onColor={handleColor}
             onCreatePackage={handleCreatePackage}
             onTypeSelection={handleTypeSelection}
             fitKey={fitKey}
