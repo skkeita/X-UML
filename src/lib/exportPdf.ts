@@ -52,20 +52,37 @@ async function rasterize(svg: string, width: number, height: number): Promise<st
   return canvas.toDataURL('image/png');
 }
 
-export async function exportPdf(svg: string, width: number, height: number, fileName: string, title = 'Diagramme de classes'): Promise<void> {
-  const [{ jsPDF }, png] = await Promise.all([import('jspdf'), rasterize(svg, width, height)]);
-  const layout = pdfLayout(width, height);
-  const pdf = new jsPDF({ orientation: layout.orientation, unit: 'mm', format: 'a4', compress: true });
-  pdf.setProperties({ title, creator: 'X-UML' });
-  pdf.addImage(png, 'PNG', layout.x, layout.y, layout.w, layout.h, undefined, 'FAST');
+export interface PdfPage {
+  svg: string;
+  width: number;
+  height: number;
+  title: string;
+}
 
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
+/** Un seul PDF, une page A4 par tableau (orientation choisie page par page). */
+export async function exportPdfPages(pages: PdfPage[], fileName: string, docTitle = pages[0]?.title ?? 'X-UML'): Promise<void> {
+  if (pages.length === 0) return;
+  const [{ jsPDF }, pngs] = await Promise.all([import('jspdf'), Promise.all(pages.map((p) => rasterize(p.svg, p.width, p.height)))]);
+  const first = pdfLayout(pages[0].width, pages[0].height);
+  const pdf = new jsPDF({ orientation: first.orientation, unit: 'mm', format: 'a4', compress: true });
+  pdf.setProperties({ title: docTitle, creator: 'X-UML' });
   const date = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(8);
-  pdf.setTextColor(120, 128, 140);
-  pdf.text(title, MARGIN, pageH - MARGIN / 2 - 1);
-  pdf.text(`Créé avec X-UML · ${date}`, pageW - MARGIN, pageH - MARGIN / 2 - 1, { align: 'right' });
+  pages.forEach((page, i) => {
+    const layout = pdfLayout(page.width, page.height);
+    if (i > 0) pdf.addPage('a4', layout.orientation);
+    pdf.addImage(pngs[i], 'PNG', layout.x, layout.y, layout.w, layout.h, undefined, 'FAST');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(120, 128, 140);
+    pdf.text(page.title, MARGIN, pageH - MARGIN / 2 - 1);
+    const right = pages.length > 1 ? `Créé avec X-UML · ${date} · ${i + 1}/${pages.length}` : `Créé avec X-UML · ${date}`;
+    pdf.text(right, pageW - MARGIN, pageH - MARGIN / 2 - 1, { align: 'right' });
+  });
   pdf.save(fileName);
+}
+
+export async function exportPdf(svg: string, width: number, height: number, fileName: string, title = 'Diagramme de classes'): Promise<void> {
+  await exportPdfPages([{ svg, width, height, title }], fileName, title);
 }
