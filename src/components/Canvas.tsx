@@ -16,6 +16,10 @@ interface Props {
   onRelationChange: (ref: RelationRef, change: RelationChange) => void;
   onRelationDelete: (ref: RelationRef) => void;
   onRelationAdd: (from: string, to: string, kind: RelationKind) => void;
+  /** Prévient l'application de la classe cliquée (null : clic dans le vide). */
+  onSelectClass?: (name: string | null) => void;
+  /** Vue ciblée active sur cette classe : les autres sont estompées. */
+  focus?: string | null;
 }
 
 interface View {
@@ -45,7 +49,17 @@ const MAX_K = 3;
 const DRAG_THRESHOLD_PX = 4;
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
-export function Canvas({ diagram, positions, theme, onMove, onRelationChange, onRelationDelete, onRelationAdd }: Props) {
+export function Canvas({
+  diagram,
+  positions,
+  theme,
+  onMove,
+  onRelationChange,
+  onRelationDelete,
+  onRelationAdd,
+  onSelectClass,
+  focus,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const didFit = useRef(false);
@@ -213,12 +227,14 @@ export function Canvas({ diagram, positions, theme, onMove, onRelationChange, on
     const b = boxes[name];
     drag.current = { type: 'box', name, dx: w.x - b.x, dy: w.y - b.y, moved: false };
     setSelected(name);
+    onSelectClass?.(name);
     setSelectedEdge(null);
     svgRef.current?.setPointerCapture(e.pointerId);
   };
 
   const onBackgroundDown = (e: PointerEvent<SVGSVGElement>) => {
     setSelected(null);
+    onSelectClass?.(null);
     setSelectedEdge(null);
     if (link) {
       setLink(null); // un clic dans le vide annule la création de lien
@@ -319,6 +335,7 @@ export function Canvas({ diagram, positions, theme, onMove, onRelationChange, on
             selected={selected}
             selectedEdge={selectedEdge}
             highlighted={highlighted}
+            focus={focus}
             onBoxPointerDown={onBoxDown}
             onEdgePointerDown={onEdgeDown}
             onHandlePointerDown={onHandleDown}

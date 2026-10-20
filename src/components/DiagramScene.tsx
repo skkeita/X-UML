@@ -27,6 +27,8 @@ interface Props {
   selectedEdge?: number | null;
   onBoxPointerDown?: (name: string, e: ReactPointerEvent<SVGGElement>) => void;
   onEdgePointerDown?: (relation: Relation, e: ReactPointerEvent<SVGGElement>) => void;
+  /** Vue ciblée : la classe et ses voisines restent nettes, le reste est estompé. */
+  focus?: string | null;
   /** Classe mise en évidence comme cible pendant la création d'un lien. */
   highlighted?: string | null;
   /** Poignée de connexion (milieu d'un côté) : point de départ d'un nouveau lien, en coordonnées monde. */
@@ -159,11 +161,22 @@ export function DiagramScene({
   selected,
   selectedEdge,
   highlighted,
+  focus,
   onBoxPointerDown,
   onEdgePointerDown,
   onHandlePointerDown,
 }: Props) {
   const edges = computeEdges(diagram.relations, boxes);
+  const focusOn = focus && boxes[focus] ? focus : null;
+  const neighbours = new Set<string>();
+  if (focusOn) {
+    neighbours.add(focusOn);
+    for (const r of diagram.relations) {
+      if (r.from === focusOn) neighbours.add(r.to);
+      if (r.to === focusOn) neighbours.add(r.from);
+    }
+  }
+  const DIM = 0.28;
 
   return (
     <>
@@ -193,6 +206,7 @@ export function DiagramScene({
               onPointerDown={onEdgePointerDown ? (e) => onEdgePointerDown(relation, e) : undefined}
               style={{ cursor: onEdgePointerDown ? 'pointer' : undefined }}
               data-relation={relation.line}
+              opacity={focusOn && relation.from !== focusOn && relation.to !== focusOn ? DIM : undefined}
             >
               {/* Zone de clic invisible de 14 px : un trait de 1,4 px est presque impossible à viser */}
               {onEdgePointerDown && <path d={d} stroke="transparent" strokeWidth={14} pointerEvents="stroke" />}
@@ -230,8 +244,8 @@ export function DiagramScene({
           const rect = boxes[c.name];
           if (!rect) return null;
           return (
+            <g key={c.name} opacity={focusOn && !neighbours.has(c.name) ? DIM : undefined} style={{ transition: 'opacity 150ms' }}>
             <ClassBox
-              key={c.name}
               node={c}
               rect={rect}
               theme={theme}
@@ -240,6 +254,7 @@ export function DiagramScene({
               onPointerDown={onBoxPointerDown ? (e) => onBoxPointerDown(c.name, e) : undefined}
               onHandlePointerDown={onHandlePointerDown ? (at, e) => onHandlePointerDown(c.name, at, e) : undefined}
             />
+            </g>
           );
         })}
       </g>

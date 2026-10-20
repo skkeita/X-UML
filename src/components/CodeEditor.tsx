@@ -1,10 +1,17 @@
-import { useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import type { ParseError } from '../core/types';
 
 interface Props {
   value: string;
   onChange: (value: string) => void;
   errors: ParseError[];
+  /** Numéros de ligne à afficher (vue ciblée : numéros d'origine dans le script complet). */
+  lineNumbers?: number[];
+  /** Lignes (numéros affichés) à mettre en évidence, ex. la classe cliquée dans le diagramme. */
+  highlightLines?: Set<number>;
+  /** Ligne (numéro affiché) à faire défiler dans la zone visible quand elle change. */
+  revealLine?: number | null;
+  placeholder?: string;
 }
 
 /*
@@ -46,7 +53,7 @@ function highlight(line: string): ReactNode[] {
 
 const TEXT = 'font-mono text-[13px] leading-[20px] whitespace-pre';
 
-export function CodeEditor({ value, onChange, errors }: Props) {
+export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLines, revealLine, placeholder }: Props) {
   const preRef = useRef<HTMLPreElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   /** Dernière valeur produite par la frappe : tout autre changement vient d'un Ctrl+Z ou du canevas. */
@@ -78,6 +85,21 @@ export function CodeEditor({ value, onChange, errors }: Props) {
   const errorLines = useMemo(() => new Set(errors.map((e) => e.line)), [errors]);
   const lines = useMemo(() => value.split('\n'), [value]);
 
+  const numberAt = (i: number) => lineNumbers?.[i] ?? i + 1;
+
+  // Fait apparaître la ligne demandée (ex. déclaration de la classe cliquée), sans voler le focus.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta || revealLine == null) return;
+    const idx = lineNumbers ? lineNumbers.indexOf(revealLine) : revealLine - 1;
+    if (idx < 0) return;
+    const top = idx * 20;
+    if (top < ta.scrollTop || top > ta.scrollTop + ta.clientHeight - 60) {
+      ta.scrollTop = Math.max(0, top - 40);
+      syncScroll(ta);
+    }
+  }, [revealLine]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const syncScroll = (el: HTMLTextAreaElement) => {
     if (!preRef.current) return;
     preRef.current.scrollTop = el.scrollTop;
@@ -106,15 +128,27 @@ export function CodeEditor({ value, onChange, errors }: Props) {
         aria-hidden="true"
         className={`pointer-events-none absolute inset-0 m-0 overflow-hidden p-4 text-slate-800 dark:text-slate-200 ${TEXT}`}
       >
-        {lines.map((line, i) => (
-          <div key={i} className={errorLines.has(i + 1) ? 'bg-red-500/10' : undefined}>
-            <span className={`inline-block w-10 select-none pr-3 text-right ${errorLines.has(i + 1) ? 'text-red-500' : 'text-slate-300 dark:text-slate-600'}`}>
-              {i + 1}
+        {lines.map((line, i) => {
+          const n = numberAt(i);
+          const isError = errorLines.has(n);
+          const isHighlighted = highlightLines?.has(n);
+          // Vue ciblée : un fin trait signale que les lignes ne se suivent pas dans le script complet.
+          const gap = lineNumbers && i > 0 && n !== numberAt(i - 1) + 1;
+          return (
+          <div
+            key={i}
+            className={`${isError ? 'bg-red-500/10' : isHighlighted ? 'bg-indigo-500/10' : ''} ${
+              gap ? 'shadow-[inset_0_1px_0_rgba(100,116,139,0.35)]' : ''
+            }`}
+          >
+            <span className={`inline-block w-10 select-none pr-3 text-right ${isError ? 'text-red-500' : isHighlighted ? 'text-indigo-500' : 'text-slate-300 dark:text-slate-600'}`}>
+              {n}
             </span>
             {highlight(line)}
             {'​'}
           </div>
-        ))}
+          );
+        })}
       </pre>
 
       <textarea
@@ -128,7 +162,7 @@ export function CodeEditor({ value, onChange, errors }: Props) {
         autoCorrect="off"
         wrap="off"
         aria-label="Éditeur de script UML"
-        placeholder="class Animal { + nom: string }"
+        placeholder={placeholder ?? 'class Animal { + nom: string }'}
         className={`absolute inset-0 h-full w-full resize-none overflow-auto border-0 bg-transparent py-4 pl-14 pr-4 text-transparent caret-indigo-600 outline-none selection:bg-indigo-500/25 dark:caret-indigo-300 ${TEXT}`}
       />
     </div>
