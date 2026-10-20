@@ -1,6 +1,6 @@
 import { formatDecl, parseDecl } from './decl';
-import { OPERATORS, RELATION } from './parser';
-import type { RelationKind } from './types';
+import { OPERATORS, matchRelation } from './parser';
+import type { DiagramType, RelationKind } from './types';
 
 /*
  * Édition « inverse » : une action faite sur le canevas réécrit la ligne correspondante
@@ -55,6 +55,8 @@ interface ParsedLine {
   to: string;
   kind: RelationKind;
   label?: string;
+  multFrom?: string;
+  multTo?: string;
 }
 
 /** Retrouve la ligne de la relation et vérifie qu'elle correspond toujours (from/to). */
@@ -70,9 +72,9 @@ function locate(source: string, ref: RelationRef): ParsedLine | null {
   const code = cut >= 0 ? body.slice(0, cut) : body;
   const comment = cut >= 0 ? body.slice(cut) : '';
 
-  const m = RELATION.exec(code.trim());
+  const m = matchRelation(code.trim());
   if (!m) return null;
-  const [, from, op, to, label] = m;
+  const { from, op, to, label } = m;
   // Garde-fou : si le texte a changé entre-temps, on ne touche à rien.
   if (from !== ref.from || to !== ref.to) return null;
 
@@ -85,9 +87,15 @@ function locate(source: string, ref: RelationRef): ParsedLine | null {
     from,
     to,
     kind: OPERATORS[op],
-    label: label?.trim() || undefined,
+    label,
+    multFrom: m.multFrom,
+    multTo: m.multTo,
   };
 }
+
+/** « A "1" -- "0..*" B » : multiplicités écrites seulement si présentes. */
+const relationText = (a: string, ma: string | undefined, op: string, mb: string | undefined, b: string) =>
+  `${a}${ma ? ` "${ma}"` : ''} ${op} ${mb ? `"${mb}" ` : ''}${b}`;
 
 /** Change le type et/ou le sens d'une relation. Renvoie le source inchangé si la ligne ne correspond plus. */
 export function updateRelation(source: string, ref: RelationRef, change: RelationChange): string {
@@ -99,16 +107,18 @@ export function updateRelation(source: string, ref: RelationRef, change: Relatio
   const from = change.from ?? p.from;
   const to = change.to ?? p.to;
   const [a, b] = change.reverse ? [to, from] : [from, to];
+  // Inverser le sens échange aussi les multiplicités.
+  const [ma, mb] = change.reverse ? [p.multTo, p.multFrom] : [p.multFrom, p.multTo];
   const text = change.label !== undefined ? change.label.trim() : p.label;
   // Devenue un héritage / une réalisation (sans libellé) : elle rejoint la déclaration de la classe.
-  if ((kind === 'inheritance' || kind === 'realization') && !text && a !== b) {
+  if ((kind === 'inheritance' || kind === 'realization') && !text && !ma && !mb && a !== b) {
     const withoutLine = [...p.lines.slice(0, p.idx), ...p.lines.slice(p.idx + 1)].join('\n');
     const inCode = addToDeclaration(withoutLine, a, b, kind);
     if (inCode !== null) return inCode;
   }
   const label = text ? ` : ${text}` : '';
   const comment = p.comment ? ` ${p.comment}` : '';
-  p.lines[p.idx] = `${p.indent}${a} ${SYMBOL[kind]} ${b}${label}${comment}${p.eol}`;
+  p.lines[p.idx] = `${p.indent}${relationText(a, ma, SYMBOL[kind], mb, b)}${label}${comment}${p.eol}`;
   return p.lines.join('\n');
 }
 
@@ -127,7 +137,7 @@ export function addRelation(source: string, from: string, to: string, kind: Rela
   const trimmed = source.replace(/\s+$/, '');
   if (!trimmed) return `${line}\n`;
   const lastLine = trimmed.slice(trimmed.lastIndexOf('\n') + 1).trim();
-  const sep = RELATION.test(lastLine.replace(/\/\/.*$/, '').trim()) ? '\n' : '\n\n';
+  const sep = matchRelation(lastLine.replace(/\/\/.*$/, '').trim()) ? '\n' : '\n\n';
   return `${trimmed}${sep}${line}\n`;
 }
 
@@ -244,4 +254,96 @@ function addToDeclaration(source: string, name: string, parent: string, kind: Re
     return lines.join('\n');
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sélection multiple : package, cadre de diagramme, suppression       */
+/* ------------------------------------------------------------------ */
+
+/** Identifiant valide tiré d'un titre libre (« Gestion des ventes » → GestionDesVentes). */
+export function toIdent(title: string): string {
+  const words = title
+    .trim()
+    .split(/[^\p{L}\p{N}_]+/u)
+    .filter(Boolean);
+  const id = words.map((w, i) => (i === 0 ? w : w[0].toUpperCase() + w.slice(1))).join('');
+  return /^[\p{L}_]/u.test(id) ? id : `P${id}`;
+}
+
+function appendLine(source: string, line: string): string {
+  const trimmed = source.replace(/\s+$/, '');
+  return trimmed ? `${trimmed}\n\n${line}\n` : `${line}\n`;
+}
+
+/** Regroupe des éléments dans un package (dessiné comme un dossier autour d'eux). */
+export function addPackage(source: string, title: string, members: string[]): string {
+  const id = toIdent(title || 'Package');
+  const label = id === title.trim() ? '' : ` "${title.trim()}"`;
+  return appendLine(source, `package ${id}${label} : ${members.join(', ')}`);
+}
+
+/** « Type » une sélection : cadre de diagramme UML (uc, ctx, pkg, com, class) autour des éléments. */
+export function addDiagramFrame(source: string, type: DiagramType, title: string, members: string[]): string {
+  const t = title.trim();
+  return appendLine(source, `diagram ${type}${t ? ` "${t}"` : ''} : ${members.join(', ')}`);
+}
+
+const DECL_HEAD = /^\s*(?:abstract\s+class|class|interface|enum|actor|usecase|object|system|package)\s+([\p{L}_][\p{L}\p{N}_]*)/u;
+const GROUP_LINE = /^(\s*(?:package|system)\s+[\p{L}_][\p{L}\p{N}_]*(?:\s+"[^"]*")?\s*:\s*|\s*diagram\s+\w+(?:\s+"[^"]*")?\s*:\s*)(.+)$/u;
+
+/**
+ * Supprime des éléments du script : leurs déclarations (bloc compris), les liaisons qui les citent,
+ * et leurs mentions dans « extends / implements » et dans les groupes (un groupe vidé disparaît).
+ */
+export function deleteNodes(source: string, names: string[]): string {
+  const gone = new Set(names);
+  const lines = source.split('\n');
+  const out: string[] = [];
+  let skipBlock = false;
+  let depth = 0;
+  for (const raw of lines) {
+    const code = raw.replace(/\/\/.*$/, '');
+    const trimmed = code.trim();
+    if (depth > 0) {
+      if (trimmed === '}') depth--;
+      if (!skipBlock) out.push(raw);
+      if (depth === 0) skipBlock = false;
+      continue;
+    }
+    // Groupe : on retire les membres supprimés (et le groupe s'il devient vide ou s'il est lui-même supprimé).
+    const g = GROUP_LINE.exec(code);
+    if (g) {
+      const head = DECL_HEAD.exec(code);
+      if (head && gone.has(head[1])) continue;
+      const members = g[2].split(',').map((m) => m.trim()).filter((m) => m && !gone.has(m));
+      if (members.length === 0) continue;
+      out.push(`${g[1]}${members.join(', ')}`);
+      continue;
+    }
+    const head = DECL_HEAD.exec(code);
+    if (head) {
+      const opens = code.includes('{') && !trimmed.endsWith('}');
+      if (gone.has(head[1])) {
+        if (opens) {
+          depth = 1;
+          skipBlock = true;
+        }
+        continue;
+      }
+      // Classe conservée : on retire les parents supprimés de extends / implements.
+      const decl = parseDecl(code.trimEnd());
+      if (decl && (decl.extends.some((n) => gone.has(n)) || decl.implements.some((n) => gone.has(n)))) {
+        decl.extends = decl.extends.filter((n) => !gone.has(n));
+        decl.implements = decl.implements.filter((n) => !gone.has(n));
+        const comment = raw.slice(code.length);
+        out.push(`${formatDecl(decl)}${comment ? ` ${comment.trim()}` : ''}`);
+      } else out.push(raw);
+      if (opens) depth = 1;
+      continue;
+    }
+    const rel = matchRelation(trimmed);
+    if (rel && (gone.has(rel.from) || gone.has(rel.to))) continue;
+    out.push(raw);
+  }
+  return out.join('\n');
 }

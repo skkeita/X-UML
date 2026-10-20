@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { RELATION_CHOICES, type RelationChange, type RelationRef } from '../core/edit';
-import { GRID, boundsOf, computeBoxes, computeEdges, snap } from '../core/layout';
+import { GRID, boundsOf, computeScene, snap } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
-import type { Diagram, Point, Positions, Relation, RelationKind } from '../core/types';
+import type { Diagram, DiagramType, Group, Point, Positions, Relation, RelationKind } from '../core/types';
 import { DiagramScene } from './DiagramScene';
 import { FitIcon } from './Icons';
 import { RelationPicker } from './RelationPicker';
+import { SelectionMenu } from './SelectionMenu';
 
 interface Props {
   diagram: Diagram;
   positions: Positions;
   theme: SceneTheme;
-  /** `first` = premier mouvement d'un glisser (ouvre une nouvelle étape d'annulation). */
-  onMove: (name: string, p: Point, first: boolean) => void;
+  /** Nouvelles positions ; `first` = premier mouvement d'un glisser (ouvre une nouvelle étape d'annulation). */
+  onMove: (moves: Record<string, Point>, first: boolean) => void;
   onRelationChange: (ref: RelationRef, change: RelationChange) => void;
   onRelationDelete: (ref: RelationRef) => void;
   onRelationAdd: (from: string, to: string, kind: RelationKind) => void;
   /** Change à chaque import : le canevas recadre alors tout le diagramme. */
   fitKey?: number;
-  /** Fin d'un glisser de classe : l'application corrige un éventuel chevauchement. */
-  onDrop?: (name: string) => void;
+  /** Fin d'un glisser : l'application corrige un éventuel chevauchement. */
+  onDrop?: (names: string[]) => void;
+  /** Actions du menu de sélection multiple. */
+  onDeleteNodes?: (names: string[]) => void;
+  onCreatePackage?: (title: string, names: string[]) => void;
+  onTypeSelection?: (type: DiagramType, title: string, names: string[]) => void;
   /** Prévient l'application de la classe cliquée (null : clic dans le vide). */
   onSelectClass?: (name: string | null) => void;
   /** Vue ciblée active sur cette classe : les autres sont estompées. */
@@ -33,7 +38,8 @@ interface View {
 }
 
 type Drag =
-  | { type: 'box'; name: string; dx: number; dy: number; moved: boolean }
+  | { type: 'move'; names: string[]; start: Point; orig: Record<string, Point>; moved: boolean }
+  | { type: 'lasso'; start: Point; additive: boolean }
   | { type: 'pan'; sx: number; sy: number; vx: number; vy: number }
   | { type: 'link'; from: string; origin: Point; moved: boolean };
 
@@ -63,6 +69,9 @@ export function Canvas({
   onRelationAdd,
   onSelectClass,
   onDrop,
+  onDeleteNodes,
+  onCreatePackage,
+  onTypeSelection,
   fitKey = 0,
   focus,
 }: Props) {
@@ -75,9 +84,16 @@ export function Canvas({
   const [panning, setPanning] = useState(false);
   const [link, setLink] = useState<LinkState | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
+  /** Sélection multiple (Shift+clic, Shift+glisser, clic sur un cadre). */
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [lasso, setLasso] = useState<{ a: Point; b: Point } | null>(null);
+  /** Glisser en cours (le menu de sélection se cache pendant le mouvement). */
+  const [dragging, setDragging] = useState(false);
 
-  const boxes = useMemo(() => computeBoxes(diagram, positions), [diagram, positions]);
-  const edges = useMemo(() => computeEdges(diagram.relations, boxes), [diagram, boxes]);
+  const scene = useMemo(() => computeScene(diagram, positions), [diagram, positions]);
+  const { boxes, edges, frames } = scene;
+  // Un élément sélectionné qui disparaît du code sort de la sélection.
+  const selected2 = useMemo(() => new Set([...selection].filter((n) => boxes[n])), [selection, boxes]);
 
   // Lien sélectionné (identifié par sa ligne source). S'il disparaît du texte, le panneau se ferme seul.
   const activeEdge = selectedEdge === null ? undefined : edges.find((e) => e.relation.line === selectedEdge);
@@ -140,9 +156,15 @@ export function Canvas({
     const n = Number(e.key);
     const digit = Number.isInteger(n) && n >= 1 && n <= RELATION_CHOICES.length ? RELATION_CHOICES[n - 1].kind : null;
 
-    if (e.key === 'Escape' && (link || activeRef)) {
+    if (e.key === 'Escape' && (link || activeRef || selected2.size > 0)) {
       setLink(null);
       setSelectedEdge(null);
+      setSelection(new Set());
+    } else if (!activeRef && !link && (e.key === 'Delete' || e.key === 'Backspace') && (selected2.size > 0 || selected)) {
+      const names = selected2.size > 0 ? [...selected2] : selected ? [selected] : [];
+      onDeleteNodes?.(names);
+      setSelection(new Set());
+      setSelected(null);
     } else if (link?.phase === 'choose' && digit) pickForNewLink(digit);
     else if (activeRef && digit) onRelationChange(activeRef, { kind: digit });
     else if (activeRef && (e.key === 'r' || e.key === 'R')) onRelationChange(activeRef, { reverse: true });
@@ -163,7 +185,7 @@ export function Canvas({
   /** Ajuste le zoom/pan pour voir tout le diagramme. */
   const fit = useCallback(() => {
     const el = svgRef.current;
-    const b = boundsOf(Object.values(boxes));
+    const b = boundsOf([...Object.values(boxes), ...Object.values(frames)]);
     if (!el || !b) {
       setView({ x: 0, y: 0, k: 1 });
       return;
@@ -172,7 +194,7 @@ export function Canvas({
     const H = el.clientHeight;
     const k = clamp(Math.min((W - 80) / b.w, (H - 80) / b.h), MIN_K, 1.25);
     setView({ k, x: (W - b.w * k) / 2 - b.x * k, y: (H - b.h * k) / 2 - b.y * k });
-  }, [boxes]);
+  }, [boxes, frames]);
 
   // Recadrage après un import (le nouveau diagramme arrive après l'anti-rebond du parseur).
   const fitRef = useRef(fit);
@@ -231,6 +253,15 @@ export function Canvas({
     setSelectedEdge(relation.line);
   };
 
+  /** Démarre le déplacement d'un ou plusieurs éléments. */
+  const startMove = (names: string[], e: React.PointerEvent) => {
+    const orig: Record<string, Point> = {};
+    for (const n of names) if (boxes[n]) orig[n] = { x: boxes[n].x, y: boxes[n].y };
+    drag.current = { type: 'move', names: Object.keys(orig), start: toWorld(e.clientX, e.clientY), orig, moved: false };
+    setDragging(true);
+    svgRef.current?.setPointerCapture(e.pointerId);
+  };
+
   const onBoxDown = (name: string, e: React.PointerEvent<SVGGElement>) => {
     e.stopPropagation();
     if (link?.phase === 'target') {
@@ -238,13 +269,39 @@ export function Canvas({
       return;
     }
     setLink(null);
-    const w = toWorld(e.clientX, e.clientY);
-    const b = boxes[name];
-    drag.current = { type: 'box', name, dx: w.x - b.x, dy: w.y - b.y, moved: false };
+    setSelectedEdge(null);
+    // Shift+clic : ajoute / retire l'élément de la sélection multiple.
+    if (e.shiftKey) {
+      setSelection((s) => {
+        const next = new Set(s);
+        if (selected && !next.size) next.add(selected);
+        if (next.has(name)) next.delete(name);
+        else next.add(name);
+        return next;
+      });
+      setSelected(null);
+      return;
+    }
+    // Clic sur un élément d'une sélection multiple : on déplace tout le groupe.
+    if (selected2.has(name) && selected2.size > 1) {
+      startMove([...selected2], e);
+      return;
+    }
+    setSelection(new Set());
     setSelected(name);
     onSelectClass?.(name);
+    startMove([name], e);
+  };
+
+  /** Clic sur le titre d'un cadre : sélectionne et déplace tous ses membres. */
+  const onFrameDown = (group: Group, e: React.PointerEvent<SVGGElement>) => {
+    e.stopPropagation();
+    setLink(null);
     setSelectedEdge(null);
-    svgRef.current?.setPointerCapture(e.pointerId);
+    setSelected(null);
+    const members = group.members.filter((m) => boxes[m]);
+    setSelection(new Set(members));
+    startMove(members, e);
   };
 
   const onBackgroundDown = (e: PointerEvent<SVGSVGElement>) => {
@@ -255,6 +312,15 @@ export function Canvas({
       setLink(null); // un clic dans le vide annule la création de lien
       if (link.phase === 'target') return;
     }
+    // Shift+glisser dans le vide : rectangle de sélection.
+    if (e.shiftKey) {
+      const w = toWorld(e.clientX, e.clientY);
+      drag.current = { type: 'lasso', start: w, additive: true };
+      setLasso({ a: w, b: w });
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
+    setSelection(new Set());
     drag.current = { type: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
     setPanning(true);
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -275,16 +341,38 @@ export function Canvas({
       setCursor(w);
       return;
     }
-    const x = w.x - d.dx;
-    const y = w.y - d.dy;
-    // Aimantation sur la grille ; Alt = déplacement libre au pixel près.
-    onMove(d.name, e.altKey ? { x: Math.round(x), y: Math.round(y) } : { x: snap(x), y: snap(y) }, !d.moved);
+    if (d.type === 'lasso') {
+      setLasso({ a: d.start, b: w });
+      return;
+    }
+    // Déplacement : même décalage pour tous les éléments ; aimantation sur la grille (Alt = libre).
+    const dx = w.x - d.start.x;
+    const dy = w.y - d.start.y;
+    if (!d.moved && Math.hypot(dx, dy) * view.k < 2) return;
+    const moves: Record<string, Point> = {};
+    for (const n of d.names) {
+      const x = d.orig[n].x + dx;
+      const y = d.orig[n].y + dy;
+      moves[n] = e.altKey ? { x: Math.round(x), y: Math.round(y) } : { x: snap(x), y: snap(y) };
+    }
+    onMove(moves, !d.moved);
     d.moved = true;
   };
 
   const onPointerUp = (e: PointerEvent<SVGSVGElement>) => {
     const d = drag.current;
-    if (d?.type === 'box' && d.moved) onDrop?.(d.name);
+    if (d?.type === 'move' && d.moved) onDrop?.(d.names);
+    if (d?.type === 'lasso' && lasso) {
+      const x0 = Math.min(lasso.a.x, lasso.b.x);
+      const x1 = Math.max(lasso.a.x, lasso.b.x);
+      const y0 = Math.min(lasso.a.y, lasso.b.y);
+      const y1 = Math.max(lasso.a.y, lasso.b.y);
+      const hit = Object.entries(boxes)
+        .filter(([, b]) => b.x < x1 && b.x + b.w > x0 && b.y < y1 && b.y + b.h > y0)
+        .map(([n]) => n);
+      setSelection((s) => new Set([...(d.additive ? s : []), ...hit]));
+      setLasso(null);
+    }
     if (d?.type === 'link') {
       const w = toWorld(e.clientX, e.clientY);
       if (d.moved) {
@@ -297,11 +385,14 @@ export function Canvas({
       }
     }
     drag.current = null;
+    setDragging(false);
     setPanning(false);
   };
 
   const onPointerCancel = () => {
     if (drag.current?.type === 'link') setLink(null);
+    setLasso(null);
+    setDragging(false);
     drag.current = null;
     setPanning(false);
   };
@@ -353,10 +444,28 @@ export function Canvas({
             highlighted={highlighted}
             focus={focus}
             edges={edges}
+            frames={frames}
+            selection={selected2}
+            onFramePointerDown={onFrameDown}
             onBoxPointerDown={onBoxDown}
             onEdgePointerDown={onEdgeDown}
             onHandlePointerDown={onHandleDown}
           />
+          {lasso && (
+            <rect
+              x={Math.min(lasso.a.x, lasso.b.x)}
+              y={Math.min(lasso.a.y, lasso.b.y)}
+              width={Math.abs(lasso.b.x - lasso.a.x)}
+              height={Math.abs(lasso.b.y - lasso.a.y)}
+              fill={theme.accent}
+              fillOpacity={0.08}
+              stroke={theme.accent}
+              strokeWidth={1 / view.k}
+              strokeDasharray={`${4 / view.k} ${3 / view.k}`}
+              pointerEvents="none"
+              data-lasso=""
+            />
+          )}
           {rubber && (
             <g pointerEvents="none">
               <line
@@ -396,6 +505,38 @@ export function Canvas({
         />
       )}
 
+      {/* Menu : actions sur une sélection multiple */}
+      {selected2.size > 0 && !lasso && !link && !dragging && (() => {
+        const b = boundsOf([...selected2].map((n) => boxes[n]));
+        if (!b) return null;
+        const top = toScreen({ x: b.x + b.w / 2, y: b.y });
+        const bottom = toScreen({ x: b.x, y: b.y + b.h });
+        const names = [...selected2];
+        // Au-dessus de la sélection (sans jamais la masquer) ; en dessous s'il n'y a pas la place.
+        const above = top.y - 64;
+        return (
+          <SelectionMenu
+            key={names.join('|')}
+            x={clamp(top.x, 240, bounds.w - 240)}
+            y={above >= 8 ? above : Math.min(bottom.y + 12, bounds.h - 60)}
+            names={names}
+            onPackage={(title) => {
+              onCreatePackage?.(title, names);
+              setSelection(new Set());
+            }}
+            onType={(type, title) => {
+              onTypeSelection?.(type, title, names);
+              setSelection(new Set());
+            }}
+            onDelete={() => {
+              onDeleteNodes?.(names);
+              setSelection(new Set());
+            }}
+            onClear={() => setSelection(new Set())}
+          />
+        );
+      })()}
+
       {/* Menu : création d'un lien depuis une poignée */}
       {link?.phase === 'choose' && (
         <RelationPicker {...toScreen(link.at)} bounds={bounds} from={link.from} to={link.to} onPick={pickForNewLink} onClose={() => setLink(null)} />
@@ -428,7 +569,7 @@ export function Canvas({
       </div>
 
       <p className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] lg:block" style={{ color: theme.muted }}>
-        Glisser : déplacer · Poignée ◦ d’une classe : nouveau lien · Clic sur un lien : changer la flèche · Ctrl+Z : annuler
+        Glisser : déplacer · Shift+clic ou Shift+glisser : sélection multiple · Poignée ◦ : nouveau lien · Ctrl+Z : annuler
       </p>
     </div>
   );

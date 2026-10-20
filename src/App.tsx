@@ -4,15 +4,17 @@ import { CodeEditor } from './components/CodeEditor';
 import { EditorModeBar, FocusPlaceholder, type EditorMode } from './components/EditorModeBar';
 import { RelationsPanel } from './components/RelationsPanel';
 import { SplitPane } from './components/SplitPane';
+import { Tabs } from './components/Tabs';
 import { Toast, type ToastData } from './components/Toast';
 import { Toolbar } from './components/Toolbar';
-import { addRelation, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
+import { addDiagramFrame, addPackage, addRelation, deleteNodes, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
-import { computeBoxes, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
+import { boundsOf, computeBoxes, computeFrames, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
 import { SAMPLE_SOURCE } from './core/sample';
+import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
-import type { Diagram, Point, Positions, RelationKind } from './core/types';
+import type { Diagram, DiagramType, Point, RelationKind } from './core/types';
 import { useAutosave } from './hooks/useAutosave';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useHistory } from './hooks/useHistory';
@@ -20,7 +22,8 @@ import { useTheme } from './hooks/useTheme';
 import { exportPdf } from './lib/exportPdf';
 import { buildSvg, buildSvgString, downloadText } from './lib/exportSvg';
 import { exportFileName, parseProjectFile, serializeProject } from './lib/projectFile';
-import { loadProject, type ProjectData } from './lib/storage';
+import { newBoard, type Board } from './lib/project';
+import { loadProject, type StoredProject } from './lib/storage';
 
 export type RelationMode = 'simple' | 'custom';
 const RELATION_MODE_KEY = 'x-uml:relation-mode';
@@ -41,22 +44,49 @@ function loadEditorMode(): EditorMode {
   }
 }
 
-/** Tout ce que l'utilisateur peut modifier — donc tout ce que Ctrl+Z doit pouvoir restaurer. */
-interface DocState {
-  source: string;
-  /** Positions choisies par l'utilisateur (les autres sont calculées automatiquement). */
-  positions: Positions;
+/**
+ * Tout ce que l'utilisateur peut modifier — donc tout ce que Ctrl+Z doit pouvoir restaurer :
+ * les tableaux du projet (script + positions choisies), y compris leur création / fermeture.
+ */
+interface ProjectState {
+  boards: Board[];
+}
+
+/** Nom libre pour un nouveau tableau (« Classes », « Classes 2 »…). */
+function uniqueName(boards: Board[], base: string): string {
+  const names = new Set(boards.map((b) => b.name));
+  if (!names.has(base)) return base;
+  let i = 2;
+  while (names.has(`${base} ${i}`)) i++;
+  return `${base} ${i}`;
 }
 
 export default function App() {
   const { theme, toggle } = useTheme();
   const initial = useMemo(loadProject, []);
 
-  const history = useHistory<DocState>(() => ({
-    source: initial?.source ?? SAMPLE_SOURCE,
-    positions: initial?.positions ?? {},
+  const history = useHistory<ProjectState>(() => ({
+    boards: initial?.boards ?? [newBoard('Classes', SAMPLE_SOURCE)],
   }));
-  const { source, positions: stored } = history.present;
+  const { boards } = history.present;
+
+  // --- Onglet actif (hors historique : changer d'onglet ne s'annule pas) ----------------------
+  const [activeId, setActiveId] = useState<string>(() => initial?.activeId ?? history.present.boards[0].id);
+  const active = boards.find((b) => b.id === activeId) ?? boards[0];
+  const activeIdRef = useRef(active.id);
+  activeIdRef.current = active.id;
+  // Après une annulation qui retire l'onglet actif, on retombe sur un onglet existant.
+  useEffect(() => {
+    if (!boards.some((b) => b.id === activeId)) setActiveId(boards[0].id);
+  }, [boards, activeId]);
+  /** Applique une modification au tableau actif uniquement. */
+  const onActive = useCallback(
+    (fn: (b: Board) => Board) => (p: ProjectState): ProjectState => ({
+      boards: p.boards.map((b) => (b.id === activeIdRef.current ? fn(b) : b)),
+    }),
+    [],
+  );
+  const { source, positions: stored } = active;
   const [editorOpen, setEditorOpen] = useState(true);
 
   // --- Mode de l'éditeur : tout le script, ou seulement la classe cliquée --------------------
@@ -97,6 +127,19 @@ export default function App() {
   useEffect(() => {
     if (result.errors.length === 0) setDiagram(result.diagram);
   }, [result]);
+  // Changement d'onglet : on affiche tout de suite le nouveau tableau, et on oublie l'état de l'éditeur.
+  const firstBoard = useRef(true);
+  useEffect(() => {
+    if (firstBoard.current) {
+      firstBoard.current = false;
+      return;
+    }
+    setDiagram(parse(source).diagram);
+    setViewMemo(null);
+    setFocusName(null);
+    setSelectedClass(null);
+    setFitKey((k) => k + 1);
+  }, [active.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 3) Positions effectives : celles de l'utilisateur + placement automatique des nouvelles classes seulement.
   const positions = useMemo(() => layoutNewClasses(diagram, stored), [diagram, stored]);
@@ -106,39 +149,72 @@ export default function App() {
 
   /** Un glisser = une seule étape d'annulation : 'push' au premier mouvement, 'merge' ensuite. */
   const handleMove = useCallback(
-    (name: string, p: Point, first: boolean) => {
-      const apply = (s: DocState): DocState => ({ ...s, positions: { ...s.positions, ...positions, [name]: p } });
+    (moves: Record<string, Point>, first: boolean) => {
+      const apply = onActive((b) => ({ ...b, positions: { ...b.positions, ...positions, ...moves } }));
       if (first) history.push(apply);
       else history.merge(apply);
     },
-    [positions, history.push, history.merge], // eslint-disable-line react-hooks/exhaustive-deps
+    [positions, onActive, history.push, history.merge], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  /** Au lâcher : une classe posée sur une autre glisse vers la place libre la plus proche (même étape d'annulation). */
+  /**
+   * Au lâcher : des éléments posés sur d'autres glissent ensemble vers la place libre la plus proche
+   * (même étape d'annulation). Un groupe déplacé garde sa disposition interne.
+   */
   const handleDrop = useCallback(
-    (name: string) => {
-      const node = diagram.classes.find((c) => c.name === name);
-      const p = positions[name];
-      if (!node || !p) return;
+    (names: string[]) => {
+      const moved = new Set(names);
+      const rects = names
+        .map((n) => {
+          const node = diagram.classes.find((c) => c.name === n);
+          return node && positions[n] ? { ...positions[n], ...measureClass(node) } : null;
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+      const union = boundsOf(rects);
+      if (!union) return;
       const others = diagram.classes
-        .filter((c) => c.name !== name && positions[c.name])
+        .filter((c) => !moved.has(c.name) && positions[c.name])
         .map((c) => ({ ...positions[c.name], ...measureClass(c) }));
-      const free = resolveOverlap(p, measureClass(node), others);
-      if (free.x !== p.x || free.y !== p.y) history.merge((s) => ({ ...s, positions: { ...s.positions, [name]: free } }));
+      // Un élément ne se pose pas dans le cadre d'un groupe dont il ne fait pas partie.
+      const boxesNow = computeBoxes(diagram, positions);
+      const frames = computeFrames(diagram.groups ?? [], boxesNow);
+      for (const g of diagram.groups ?? []) {
+        if (frames[g.name] && !g.members.some((m) => moved.has(m))) others.push(frames[g.name]);
+      }
+      const free = resolveOverlap({ x: union.x, y: union.y }, { w: union.w, h: union.h }, others);
+      const dx = free.x - union.x;
+      const dy = free.y - union.y;
+      if (dx === 0 && dy === 0) return;
+      history.merge(
+        onActive((b) => {
+          const next = { ...b.positions };
+          for (const n of names) if (positions[n]) next[n] = { x: positions[n].x + dx, y: positions[n].y + dy };
+          return { ...b, positions: next };
+        }),
+      );
     },
-    [diagram, positions, history.merge], // eslint-disable-line react-hooks/exhaustive-deps
+    [diagram, positions, onActive, history.merge], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Édition depuis le canevas : on réécrit le script (le texte reste la source de vérité).
   const editSource = useCallback(
-    (fn: (src: string) => string) => history.push((s) => ({ ...s, source: fn(s.source) })),
-    [history.push], // eslint-disable-line react-hooks/exhaustive-deps
+    (fn: (src: string) => string) => history.push(onActive((b) => ({ ...b, source: fn(b.source) }))),
+    [onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const handleRelationChange = useCallback(
     (ref: RelationRef, change: RelationChange) => editSource((src) => updateRelation(src, ref, change)),
     [editSource],
   );
   const handleRelationDelete = useCallback((ref: RelationRef) => editSource((src) => deleteRelation(src, ref)), [editSource]);
+  const handleDeleteNodes = useCallback((names: string[]) => editSource((src) => deleteNodes(src, names)), [editSource]);
+  const handleCreatePackage = useCallback(
+    (title: string, names: string[]) => editSource((src) => addPackage(src, title, names)),
+    [editSource],
+  );
+  const handleTypeSelection = useCallback(
+    (type: DiagramType, title: string, names: string[]) => editSource((src) => addDiagramFrame(src, type, title, names)),
+    [editSource],
+  );
   const handleRelationAdd = useCallback(
     (from: string, to: string, kind: RelationKind) => editSource((src) => addRelation(src, from, to, kind)),
     [editSource],
@@ -178,9 +254,9 @@ export default function App() {
         key = `${relationMode}:class:${name}`;
       }
       setViewMemo({ key, source: r.source, lines: r.lines });
-      history.type((s) => ({ ...s, source: r.source }));
+      history.type(onActive((b) => ({ ...b, source: r.source })));
     },
-    [source, viewLines, viewKey, editorMode, focusName, relationMode, history.type], // eslint-disable-line react-hooks/exhaustive-deps
+    [source, viewLines, viewKey, editorMode, focusName, relationMode, onActive, history.type], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const highlightLines = useMemo(
@@ -195,13 +271,30 @@ export default function App() {
     [editSource],
   );
 
-  // 4) Persistance locale automatique.
-  const project = useMemo<ProjectData>(() => ({ version: 1, source, positions }), [source, positions]);
+  // 4) Persistance locale automatique (tous les tableaux ; positions effectives pour le tableau affiché).
+  const projectBoards = useMemo(() => boards.map((b) => (b.id === active.id ? { ...b, positions } : b)), [boards, active.id, positions]);
+  const project = useMemo<StoredProject>(() => ({ boards: projectBoards, activeId: active.id }), [projectBoards, active.id]);
   const saveStatus = useAutosave(project);
 
+  // --- Onglets ----------------------------------------------------------------------------------
+  const addBoard = useCallback(
+    (t: Template) => {
+      const b = newBoard(uniqueName(history.present.boards, t.name), t.source);
+      history.push((p) => ({ boards: [...p.boards, b] }));
+      setActiveId(b.id);
+    },
+    [history],
+  );
+  const renameBoard = useCallback(
+    (id: string, name: string) => history.push((p) => ({ boards: p.boards.map((b) => (b.id === id ? { ...b, name } : b)) })),
+    [history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /** Nom de fichier lisible pour le tableau affiché (export SVG / PDF). */
+  const baseName = `${exportFileName().replace(/\.json$/, '')}-${active.name.normalize('NFD').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'tableau'}`;
   const exportSvg = () => {
     const svg = buildSvgString(diagram, computeBoxes(diagram, positions), sceneTheme(theme));
-    downloadText('diagramme.svg', svg, 'image/svg+xml');
+    downloadText(`${baseName}.svg`, svg, 'image/svg+xml');
   };
 
   // --- Import / export du projet ------------------------------------------------------------
@@ -216,21 +309,38 @@ export default function App() {
     const { svg, width, height } = buildSvg(diagram, computeBoxes(diagram, positions), PRINT);
     setToast({ id: Date.now(), message: 'Préparation du PDF…', tone: 'success' });
     try {
-      await exportPdf(svg, width, height, exportFileName().replace(/\.json$/, '.pdf'));
+      await exportPdf(svg, width, height, `${baseName}.pdf`, active.name);
       setToast({ id: Date.now(), message: 'PDF exporté (A4, prêt à imprimer).', tone: 'success' });
     } catch {
       setToast({ id: Date.now(), message: 'Impossible de créer le PDF dans ce navigateur.', tone: 'error' });
     }
-  }, [diagram, positions]);
+  }, [diagram, positions, baseName, active.name]);
 
   const downloadProject = useCallback(() => {
-    downloadText(exportFileName(), serializeProject(source, positions), 'application/json');
-    setToast({ id: Date.now(), message: 'Projet exporté : code et position des classes.', tone: 'success' });
-  }, [source, positions]);
+    downloadText(exportFileName(), serializeProject(projectBoards), 'application/json');
+    setToast({
+      id: Date.now(),
+      message: `Projet exporté : ${projectBoards.length} tableau${projectBoards.length > 1 ? 'x' : ''}, code et positions.`,
+      tone: 'success',
+    });
+  }, [projectBoards]);
 
   // Raccourcis globaux. Ctrl+Z est intercepté AUSSI dans l'éditeur : l'annulation native du
   // <textarea> ignorerait les modifications faites depuis le canevas et désynchroniserait tout.
   const { undo, redo } = history;
+
+  const closeBoard = useCallback(
+    (id: string) => {
+      const list = history.present.boards;
+      if (list.length <= 1) return;
+      const i = list.findIndex((b) => b.id === id);
+      const name = list[i]?.name;
+      history.push((p) => ({ boards: p.boards.filter((b) => b.id !== id) }));
+      if (id === activeIdRef.current) setActiveId(list[i + 1]?.id ?? list[i - 1].id);
+      setToast({ id: Date.now(), message: `Tableau « ${name} » fermé.`, tone: 'success', action: { label: 'Annuler', onClick: undo } });
+    },
+    [history, undo],
+  );
 
   /** Remplace le projet courant par le fichier importé — en une étape annulable (Ctrl+Z). */
   const importFile = useCallback(
@@ -247,7 +357,8 @@ export default function App() {
         setToast({ id: Date.now(), message: `Import impossible : ${r.error}`, tone: 'error' });
         return;
       }
-      history.push(() => ({ source: r.source, positions: r.positions }));
+      history.push(() => ({ boards: r.boards }));
+      setActiveId(r.boards[0].id);
       setViewMemo(null);
       setFocusName(null);
       setSelectedClass(null);
@@ -313,6 +424,7 @@ export default function App() {
             highlightLines={highlightLines}
             revealLine={editorMode === 'all' ? reveal : null}
             placeholder={editorMode === 'all' ? 'class Animal { + nom: string }' : `class ${focusName} { … }`}
+            diagram={diagram}
           />
         ) : (
           <FocusPlaceholder
@@ -351,8 +463,9 @@ export default function App() {
           </>
         ) : (
           <p>
-            {diagram.classes.length} classe{diagram.classes.length > 1 ? 's' : ''} · {diagram.relations.length} relation
+            {diagram.classes.length} élément{diagram.classes.length > 1 ? 's' : ''} · {diagram.relations.length} relation
             {diagram.relations.length > 1 ? 's' : ''}
+            {diagram.groups?.length ? ` · ${diagram.groups.length} groupe${diagram.groups.length > 1 ? 's' : ''}` : ''}
           </p>
         )}
       </footer>
@@ -396,6 +509,7 @@ export default function App() {
         relationMode={relationMode}
         onRelationModeChange={setRelationMode}
       />
+      <Tabs boards={boards} activeId={active.id} onSelect={setActiveId} onAdd={addBoard} onRename={renameBoard} onClose={closeBoard} />
       <SplitPane
         leftOpen={editorOpen}
         left={editorPanel}
@@ -410,6 +524,9 @@ export default function App() {
             onRelationAdd={handleRelationAdd}
             onSelectClass={handleSelectClass}
             onDrop={handleDrop}
+            onDeleteNodes={handleDeleteNodes}
+            onCreatePackage={handleCreatePackage}
+            onTypeSelection={handleTypeSelection}
             fitKey={fitKey}
             focus={focusActive ? focusName : null}
           />

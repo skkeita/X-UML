@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react';
-import type { ParseError } from '../core/types';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { complete, type Completion, type Suggestion } from '../core/complete';
+import type { Diagram, ParseError } from '../core/types';
+import { CompletionMenu } from './CompletionMenu';
 
 interface Props {
   value: string;
@@ -12,6 +14,8 @@ interface Props {
   /** Ligne (numéro affiché) à faire défiler dans la zone visible quand elle change. */
   revealLine?: number | null;
   placeholder?: string;
+  /** Diagramme courant : source des suggestions de Ctrl+Espace. */
+  diagram?: Diagram;
 }
 
 /*
@@ -22,7 +26,7 @@ interface Props {
 
 // Ordre des alternatives = priorité : commentaire, mot-clé, opérateur, visibilité, accolade, nom de type.
 const TOKEN =
-  /(\/\/.*$)|(\b(?:abstract|class|interface|enum|extends|implements)\b)|(\*--|(?<!\w)o--|--\|>|\.\.\|>|-->|\.\.>|--)|(^\s*[+\-#~])|([{}])|(\p{Lu}[\p{L}\p{N}_]*)/gu;
+  /(\/\/.*$)|(\b(?:abstract|class|interface|enum|extends|implements|actor|usecase|object|system|package|diagram)\b)|(\*--|(?<!\w)o--|--\|>|\.\.\|>|-->|\.\.>|--)|(^\s*[+\-#~])|([{}])|(\p{Lu}[\p{L}\p{N}_]*)/gu;
 
 const CLASSES = [
   'text-slate-400 italic', // 1 commentaire
@@ -53,7 +57,24 @@ function highlight(line: string): ReactNode[] {
 
 const TEXT = 'font-mono text-[13px] leading-[20px] whitespace-pre';
 
-export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLines, revealLine, placeholder }: Props) {
+const LINE_H = 20;
+const PAD_TOP = 16;
+const PAD_LEFT = 56; // pl-14
+const MENU_W = 320;
+
+export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLines, revealLine, placeholder, diagram }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const [charW, setCharW] = useState(7.8);
+  const [comp, setComp] = useState<Completion | null>(null);
+  const [active, setActive] = useState(0);
+  const [, setScrollTick] = useState(0);
+  /** Position du curseur à rétablir juste après l'insertion d'une suggestion. */
+  const pendingCaret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const w = measureRef.current?.getBoundingClientRect().width;
+    if (w) setCharW(w / 20);
+  }, []);
   const preRef = useRef<HTMLPreElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   /** Dernière valeur produite par la frappe : tout autre changement vient d'un Ctrl+Z ou du canevas. */
@@ -76,6 +97,13 @@ export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLine
       endNew--;
     }
     ta.setSelectionRange(endNew, endNew);
+  }, [value]);
+
+  useLayoutEffect(() => {
+    const c = pendingCaret.current;
+    if (c === null || !taRef.current) return;
+    pendingCaret.current = null;
+    taRef.current.setSelectionRange(c, c);
   }, [value]);
 
   const emit = (v: string) => {
@@ -106,7 +134,48 @@ export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLine
     preRef.current.scrollLeft = el.scrollLeft;
   };
 
+  // --- Autocomplétion (uniquement à la demande : Ctrl+Espace) ---------------------------------
+  const openCompletion = (text: string, caret: number) => {
+    const c = diagram ? complete(text, caret, diagram) : null;
+    setComp(c);
+    setActive(0);
+  };
+  const accept = (s: Suggestion) => {
+    const ta = taRef.current;
+    if (!comp || !ta) return;
+    const next = value.slice(0, comp.from) + s.insert + value.slice(comp.to);
+    // Le curseur est replacé dès que React a écrit la nouvelle valeur (avant la frappe suivante).
+    pendingCaret.current = comp.from + s.insert.length;
+    emit(next);
+    setComp(null);
+    ta.focus();
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      openCompletion(value, e.currentTarget.selectionStart);
+      return;
+    }
+    if (comp) {
+      const n = comp.items.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : n - 1)) % n);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        accept(comp.items[active]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setComp(null);
+        return;
+      }
+    }
     // Tab insère deux espaces au lieu de quitter l'éditeur (execCommand conserve l'historique Ctrl+Z).
     if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
@@ -122,7 +191,10 @@ export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLine
   };
 
   return (
-    <div className="relative h-full overflow-hidden bg-white dark:bg-slate-950">
+    <div ref={rootRef} className="relative h-full overflow-hidden bg-white dark:bg-slate-950">
+      <span ref={measureRef} aria-hidden="true" className={`invisible absolute left-0 top-0 ${TEXT}`}>
+        {'M'.repeat(20)}
+      </span>
       <pre
         ref={preRef}
         aria-hidden="true"
@@ -154,8 +226,17 @@ export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLine
       <textarea
         value={value}
         ref={taRef}
-        onChange={(e) => emit(e.target.value)}
-        onScroll={(e) => syncScroll(e.currentTarget)}
+        onChange={(e) => {
+          emit(e.target.value);
+          // Menu ouvert : il se filtre au fil de la frappe (et se ferme si plus rien ne correspond).
+          if (comp) openCompletion(e.target.value, e.target.selectionStart);
+        }}
+        onScroll={(e) => {
+          syncScroll(e.currentTarget);
+          if (comp) setScrollTick((t) => t + 1);
+        }}
+        onMouseDown={() => setComp(null)}
+        onBlur={() => setComp(null)}
         onKeyDown={onKeyDown}
         spellCheck={false}
         autoCapitalize="off"
@@ -165,6 +246,27 @@ export function CodeEditor({ value, onChange, errors, lineNumbers, highlightLine
         placeholder={placeholder ?? 'class Animal { + nom: string }'}
         className={`absolute inset-0 h-full w-full resize-none overflow-auto border-0 bg-transparent py-4 pl-14 pr-4 text-transparent caret-indigo-600 outline-none selection:bg-indigo-500/25 dark:caret-indigo-300 ${TEXT}`}
       />
+      {comp && taRef.current && (() => {
+        const ta = taRef.current;
+        const lineStart = value.lastIndexOf('\n', comp.from - 1) + 1;
+        const row = value.slice(0, comp.from).split('\n').length - 1;
+        const col = comp.from - lineStart;
+        const height = Math.min(comp.items.length, 9) * 31 + 34;
+        const below = PAD_TOP + (row + 1) * LINE_H - ta.scrollTop + 4;
+        const above = PAD_TOP + row * LINE_H - ta.scrollTop - height - 4;
+        const fits = below + height <= (rootRef.current?.clientHeight ?? 800) - 4;
+        const maxLeft = (rootRef.current?.clientWidth ?? 600) - MENU_W - 8;
+        return (
+          <CompletionMenu
+            items={comp.items}
+            active={active}
+            left={Math.max(8, Math.min(PAD_LEFT + col * charW - ta.scrollLeft - 10, maxLeft))}
+            top={fits || above < 4 ? below : above}
+            onPick={accept}
+            onHover={setActive}
+          />
+        );
+      })()}
     </div>
   );
 }

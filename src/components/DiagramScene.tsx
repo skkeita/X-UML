@@ -5,13 +5,15 @@ import {
   ROW_H,
   compartmentHeight,
   computeEdges,
+  displayName,
   type EdgeGeometry,
   headerHeight,
   memberLabel,
   splitMembers,
 } from '../core/layout';
+import { multPosition } from '../core/routing';
 import type { SceneTheme } from '../core/theme';
-import type { ClassNode, Diagram, Point, Rect, Relation, RelationKind } from '../core/types';
+import type { ClassNode, Diagram, DiagramType, Group, Point, Rect, Relation, RelationKind } from '../core/types';
 
 /*
  * Moteur de rendu SVG pur : aucune dépendance au DOM ni à l'état.
@@ -36,7 +38,25 @@ interface Props {
   highlighted?: string | null;
   /** Poignée de connexion (milieu d'un côté) : point de départ d'un nouveau lien, en coordonnées monde. */
   onHandlePointerDown?: (name: string, at: Point, e: ReactPointerEvent<SVGGElement>) => void;
+  /** Rectangles des groupes (packages, frontières de système, cadres de diagramme). */
+  frames?: Record<string, Rect>;
+  /** Sélection multiple (Shift+clic / rectangle de sélection). */
+  selection?: Set<string>;
+  /** Saisie d'un cadre par son titre : déplace tout le groupe. */
+  onFramePointerDown?: (group: Group, e: ReactPointerEvent<SVGGElement>) => void;
 }
+
+/** Étiquette UML d'un cadre de diagramme typé (coin supérieur gauche). */
+const FRAME_TAG: Record<DiagramType, string> = {
+  class: 'class',
+  usecase: 'uc',
+  context: 'ctx',
+  package: 'pkg',
+  communication: 'com',
+};
+
+/** « <<include>> » s'affiche « «include» ». */
+const pretty = (s: string) => s.replace(/<<\s*(.+?)\s*>>/g, '«$1»');
 
 const DASHED: RelationKind[] = ['realization', 'dependency'];
 
@@ -97,12 +117,118 @@ function ClassBox({
       </text>
     ));
 
+  const name = displayName(node);
+  const sw = active ? 2 : 1.2;
+  const kind = node.kind ?? 'class';
+
+  const shape = (() => {
+    switch (kind) {
+      case 'actor': {
+        const cx = w / 2;
+        return (
+          <>
+            {/* Zone de saisie invisible : tout le rectangle de l'acteur, nom compris */}
+            <rect width={w} height={h} fill="transparent" />
+            <g fill="none" stroke={stroke} strokeWidth={active ? 2.2 : 1.6} strokeLinecap="round">
+              <circle cx={cx} cy={12} r={9} fill={theme.boxFill} />
+              <path d={`M ${cx} 21 V 50 M ${cx - 18} 30 H ${cx + 18} M ${cx} 50 L ${cx - 14} 70 M ${cx} 50 L ${cx + 14} 70`} />
+            </g>
+            <text x={cx} y={88} textAnchor="middle" {...text} fontSize={12} fontWeight={600} data-shape="actor">
+              {name}
+            </text>
+          </>
+        );
+      }
+      case 'usecase':
+        return (
+          <>
+            <ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} fill={theme.boxFill} stroke={stroke} strokeWidth={sw} data-shape="usecase" />
+            <text x={w / 2} y={h / 2 + 4} textAnchor="middle" {...text} fontSize={12.5}>
+              {name}
+            </text>
+          </>
+        );
+      case 'object':
+        return (
+          <>
+            <rect width={w} height={h} rx={3} fill={theme.boxFill} stroke={stroke} strokeWidth={sw} data-shape="object" />
+            <text x={w / 2} y={h / 2 + 4} textAnchor="middle" {...text} fontSize={12.5} fontWeight={600} textDecoration="underline">
+              {name}
+            </text>
+          </>
+        );
+      case 'system':
+        return (
+          <>
+            <rect width={w} height={h} rx={4} fill={theme.headerFill} stroke={stroke} strokeWidth={active ? 2.4 : 1.8} data-shape="system" />
+            <text x={w / 2} y={26} textAnchor="middle" {...text} fill={theme.muted} fontSize={11}>
+              «système»
+            </text>
+            <text x={w / 2} y={50} textAnchor="middle" {...text} fontSize={14} fontWeight={700}>
+              {name}
+            </text>
+          </>
+        );
+      case 'package': {
+        const tabW = Math.min(w * 0.45, 90);
+        return (
+          <>
+            <path d={`M 0 16 V 2 Q 0 0 2 0 H ${tabW - 2} Q ${tabW} 0 ${tabW} 2 V 16`} fill={theme.headerFill} stroke={stroke} strokeWidth={sw} />
+            <rect y={16} width={w} height={h - 16} rx={2} fill={theme.boxFill} stroke={stroke} strokeWidth={sw} data-shape="package" />
+            <text x={w / 2} y={16 + (h - 16) / 2 + 5} textAnchor="middle" {...text} fontSize={13} fontWeight={700}>
+              {name}
+            </text>
+          </>
+        );
+      }
+      default:
+        return null;
+    }
+  })();
+
+  if (shape) {
+    return (
+      <g
+        transform={`translate(${rect.x} ${rect.y})`}
+        onPointerDown={onPointerDown}
+        style={{ cursor: onPointerDown ? 'grab' : undefined }}
+        data-class={node.name}
+        data-kind={kind}
+        className="group"
+      >
+        {shape}
+        {onHandlePointerDown && renderHandles()}
+      </g>
+    );
+  }
+
+  function renderHandles() {
+    return handles.map((p, i) => (
+      <g
+        key={i}
+        data-handle={i}
+        className={`transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        style={{ cursor: 'crosshair' }}
+        onPointerDown={(e) => {
+          // Shift+clic : c'est une sélection, pas un nouveau lien → on laisse l'élément le recevoir.
+          if (e.shiftKey) return;
+          e.stopPropagation();
+          onHandlePointerDown?.({ x: rect.x + p.x, y: rect.y + p.y }, e);
+        }}
+      >
+        <circle cx={p.x} cy={p.y} r={11} fill="transparent" />
+        <circle cx={p.x} cy={p.y} r={5} fill={theme.boxFill} stroke={theme.accent} strokeWidth={1.6} />
+      </g>
+    ));
+  }
+
   return (
     <g
       transform={`translate(${rect.x} ${rect.y})`}
       onPointerDown={onPointerDown}
       style={{ cursor: onPointerDown ? 'grab' : undefined }}
       data-class={node.name}
+      data-kind="class"
       className="group"
     >
       {/* Corps + ombre portée légère pour détacher la boîte du fond */}
@@ -137,22 +263,64 @@ function ClassBox({
 
       {/* Poignées de connexion : visibles au survol (ou si la boîte est sélectionnée, pour le tactile).
           Absentes de l'export SVG puisqu'aucun gestionnaire n'y est passé. */}
-      {onHandlePointerDown &&
-        handles.map((p, i) => (
-          <g
-            key={i}
-            data-handle={i}
-            className={`transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-            style={{ cursor: 'crosshair' }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onHandlePointerDown({ x: rect.x + p.x, y: rect.y + p.y }, e);
-            }}
-          >
-            <circle cx={p.x} cy={p.y} r={11} fill="transparent" />
-            <circle cx={p.x} cy={p.y} r={5} fill={theme.boxFill} stroke={theme.accent} strokeWidth={1.6} />
-          </g>
-        ))}
+      {onHandlePointerDown && renderHandles()}
+    </g>
+  );
+}
+
+/** Cadre d'un groupe : dossier (package), frontière de système, ou cadre de diagramme typé. */
+function GroupFrame({
+  group,
+  rect,
+  theme,
+  onPointerDown,
+}: {
+  group: Group;
+  rect: Rect;
+  theme: SceneTheme;
+  onPointerDown?: (e: ReactPointerEvent<SVGGElement>) => void;
+}) {
+  const { x, y, w, h } = rect;
+  const text = { fontFamily: FONT_FAMILY, fill: theme.text } as const;
+  const grab = { onPointerDown, style: { cursor: onPointerDown ? 'move' : undefined } } as const;
+  if (group.kind === 'package') {
+    const tabW = Math.min(Math.max(group.title.length * 8 + 24, 70), w);
+    return (
+      <g data-group={group.name} data-group-kind="package">
+        <rect x={x} y={y + 22} width={w} height={h - 22} rx={3} fill={theme.headerFill} fillOpacity={0.25} stroke={theme.muted} strokeWidth={1.3} />
+        <g {...grab}>
+          <path d={`M ${x} ${y + 22} V ${y + 3} Q ${x} ${y} ${x + 3} ${y} H ${x + tabW - 3} Q ${x + tabW} ${y} ${x + tabW} ${y + 3} V ${y + 22}`} fill={theme.headerFill} stroke={theme.muted} strokeWidth={1.3} />
+          <text x={x + 10} y={y + 16} {...text} fontSize={12} fontWeight={700}>
+            {group.title}
+          </text>
+        </g>
+      </g>
+    );
+  }
+  if (group.kind === 'system') {
+    return (
+      <g data-group={group.name} data-group-kind="system">
+        <rect x={x} y={y} width={w} height={h} rx={6} fill="none" stroke={theme.muted} strokeWidth={1.6} />
+        <g {...grab}>
+          <rect x={x} y={y} width={w} height={26} fill="transparent" />
+          <text x={x + w / 2} y={y + 18} textAnchor="middle" {...text} fontSize={13} fontWeight={700}>
+            {group.title}
+          </text>
+        </g>
+      </g>
+    );
+  }
+  const tag = `${FRAME_TAG[group.diagramType ?? 'class']} ${group.title}`;
+  const tw = Math.min(tag.length * 7.2 + 22, w);
+  return (
+    <g data-group={group.name} data-group-kind="frame">
+      <rect x={x} y={y} width={w} height={h} fill="none" stroke={theme.edge} strokeWidth={1.3} />
+      <g {...grab}>
+        <path d={`M ${x} ${y} H ${x + tw} V ${y + 14} L ${x + tw - 8} ${y + 22} H ${x} Z`} fill={theme.headerFill} stroke={theme.edge} strokeWidth={1.3} />
+        <text x={x + 8} y={y + 15} {...text} fontSize={11.5} fontWeight={600}>
+          {tag}
+        </text>
+      </g>
     </g>
   );
 }
@@ -169,8 +337,13 @@ export function DiagramScene({
   onBoxPointerDown,
   onEdgePointerDown,
   onHandlePointerDown,
+  frames = {},
+  selection,
+  onFramePointerDown,
 }: Props) {
   const edges = precomputed ?? computeEdges(diagram.relations, boxes);
+  // Les grands cadres d'abord : un cadre imbriqué est dessiné par-dessus son parent.
+  const groups = [...(diagram.groups ?? [])].filter((g) => frames[g.name]).sort((a, b) => frames[b.name].w * frames[b.name].h - frames[a.name].w * frames[a.name].h);
   const focusOn = focus && boxes[focus] ? focus : null;
   const neighbours = new Set<string>();
   if (focusOn) {
@@ -199,9 +372,16 @@ export function DiagramScene({
         </marker>
       </defs>
 
+      {/* Cadres de groupes, tout au fond */}
+      <g>
+        {groups.map((g) => (
+          <GroupFrame key={g.name} group={g} rect={frames[g.name]} theme={theme} onPointerDown={onFramePointerDown ? (e) => onFramePointerDown(g, e) : undefined} />
+        ))}
+      </g>
+
       {/* Liens sous les boîtes : une boîte déplacée masque proprement les traits qui passent derrière */}
       <g fill="none" stroke={theme.edge} strokeWidth={1.4}>
-        {edges.map(({ relation, d, label }, i) => {
+        {edges.map(({ relation, d, label, points }, i) => {
           const m = markerFor(relation.kind);
           const isSelected = selectedEdge === relation.line;
           return (
@@ -235,9 +415,21 @@ export function DiagramScene({
                   fontFamily={FONT_FAMILY}
                   fontSize={11}
                 >
-                  {relation.label}
+                  {pretty(relation.label)}
                 </text>
               )}
+              {[
+                [relation.multFrom, 'start'],
+                [relation.multTo, 'end'],
+              ].map(([m, end]) => {
+                if (!m || points.length < 2) return null;
+                const at = multPosition(points, end as 'start' | 'end');
+                return (
+                  <text key={end} x={at.x} y={at.y} textAnchor="middle" fill={theme.text} stroke={theme.bg} strokeWidth={3} paintOrder="stroke" fontFamily={FONT_FAMILY} fontSize={11} data-mult={end}>
+                    {m}
+                  </text>
+                );
+              })}
             </g>
           );
         })}
@@ -253,7 +445,7 @@ export function DiagramScene({
               node={c}
               rect={rect}
               theme={theme}
-              selected={selected === c.name}
+              selected={selected === c.name || !!selection?.has(c.name)}
               highlighted={highlighted === c.name}
               onPointerDown={onBoxPointerDown ? (e) => onBoxPointerDown(c.name, e) : undefined}
               onHandlePointerDown={onHandlePointerDown ? (at, e) => onHandlePointerDown(c.name, at, e) : undefined}

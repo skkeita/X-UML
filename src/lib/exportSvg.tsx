@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DiagramScene } from '../components/DiagramScene';
-import { boundsOf, computeEdges } from '../core/layout';
+import { boundsOf, sceneFromBoxes } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
 import type { Diagram, Rect } from '../core/types';
 
@@ -14,9 +14,10 @@ export function buildSvgString(diagram: Diagram, boxes: Record<string, Rect>, th
 /** Variante qui renvoie aussi la taille de l'image (utile pour la mise en page PDF). */
 export function buildSvg(diagram: Diagram, boxes: Record<string, Rect>, theme: SceneTheme): { svg: string; width: number; height: number } {
   // Le cadrage englobe aussi les liens : un contournement passe parfois au-delà des classes.
-  const edges = computeEdges(diagram.relations, boxes);
+  const { edges, frames } = sceneFromBoxes(diagram, boxes);
   const extra = edges.flatMap((e) => [...e.points, e.label]).map((p) => ({ x: p.x - 30, y: p.y - 10, w: 60, h: 20 }));
-  const b = boundsOf([...Object.values(boxes), ...extra]) ?? { x: 0, y: 0, w: 200, h: 100 };
+  // Un acteur a un nom qui peut déborder de sa boîte : on garde une marge latérale.
+  const b = boundsOf([...Object.values(boxes), ...Object.values(frames), ...extra]) ?? { x: 0, y: 0, w: 200, h: 100 };
   const x = b.x - PADDING;
   const y = b.y - PADDING;
   const w = b.w + PADDING * 2;
@@ -25,7 +26,7 @@ export function buildSvg(diagram: Diagram, boxes: Record<string, Rect>, theme: S
   const markup = renderToStaticMarkup(
     <svg xmlns="http://www.w3.org/2000/svg" viewBox={`${x} ${y} ${w} ${h}`} width={w} height={h}>
       <rect x={x} y={y} width={w} height={h} fill={theme.bg} />
-      <DiagramScene diagram={diagram} boxes={boxes} theme={theme} edges={edges} />
+      <DiagramScene diagram={diagram} boxes={boxes} theme={theme} edges={edges} frames={frames} />
     </svg>,
   );
   return { svg: `<?xml version="1.0" encoding="UTF-8"?>\n${markup}`, width: w, height: h };
