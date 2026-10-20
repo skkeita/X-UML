@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { RELATION_CHOICES, type RelationChange, type RelationRef } from '../core/edit';
-import { GRID, boundsOf, computeScene, snap } from '../core/layout';
+import { GRID, boundsOf, computeScene, legendBox, snap } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
 import type { Diagram, DiagramType, Group, Point, Positions, Relation, RelationKind } from '../core/types';
 import { DiagramScene } from './DiagramScene';
@@ -23,6 +23,9 @@ interface Props {
   onDrop?: (names: string[]) => void;
   /** Actions du menu de sélection multiple. */
   onDeleteNodes?: (names: string[]) => void;
+  /** Duplique les éléments ; renvoie les noms des copies (qui deviennent la sélection). */
+  onDuplicate?: (names: string[]) => string[];
+  onColor?: (names: string[], color: string | null, label: string) => void;
   onCreatePackage?: (title: string, names: string[]) => void;
   onTypeSelection?: (type: DiagramType, title: string, names: string[]) => void;
   /** Prévient l'application de la classe cliquée (null : clic dans le vide). */
@@ -70,6 +73,8 @@ export function Canvas({
   onSelectClass,
   onDrop,
   onDeleteNodes,
+  onDuplicate,
+  onColor,
   onCreatePackage,
   onTypeSelection,
   fitKey = 0,
@@ -148,10 +153,23 @@ export function Canvas({
 
   // --- Raccourcis clavier (via ref : toujours la dernière version des états) ----------------
 
+  const duplicate = (names: string[]) => {
+    if (!onDuplicate || names.length === 0) return;
+    const copies = onDuplicate(names);
+    setSelected(null);
+    setSelection(new Set(copies));
+  };
+
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   onKeyRef.current = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return; // ne pas voler la frappe de l'éditeur
+    // Ctrl+D : dupliquer la sélection (au lieu d'ajouter un favori dans le navigateur).
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'd' && (selected2.size > 0 || selected)) {
+      e.preventDefault();
+      duplicate(selected2.size > 0 ? [...selected2] : selected ? [selected] : []);
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const n = Number(e.key);
     const digit = Number.isInteger(n) && n >= 1 && n <= RELATION_CHOICES.length ? RELATION_CHOICES[n - 1].kind : null;
@@ -185,7 +203,9 @@ export function Canvas({
   /** Ajuste le zoom/pan pour voir tout le diagramme. */
   const fit = useCallback(() => {
     const el = svgRef.current;
-    const b = boundsOf([...Object.values(boxes), ...Object.values(frames)]);
+    const content = [...Object.values(boxes), ...Object.values(frames)];
+    const legend = legendBox(diagram, content);
+    const b = boundsOf(legend ? [...content, legend] : content);
     if (!el || !b) {
       setView({ x: 0, y: 0, k: 1 });
       return;
@@ -194,7 +214,7 @@ export function Canvas({
     const H = el.clientHeight;
     const k = clamp(Math.min((W - 80) / b.w, (H - 80) / b.h), MIN_K, 1.25);
     setView({ k, x: (W - b.w * k) / 2 - b.x * k, y: (H - b.h * k) / 2 - b.y * k });
-  }, [boxes, frames]);
+  }, [boxes, frames, diagram]);
 
   // Recadrage après un import (le nouveau diagramme arrive après l'anti-rebond du parseur).
   const fitRef = useRef(fit);
@@ -526,6 +546,16 @@ export function Canvas({
             }}
             onType={(type, title) => {
               onTypeSelection?.(type, title, names);
+              setSelection(new Set());
+            }}
+            onDuplicate={() => duplicate(names)}
+            legend={diagram.style?.legend ?? []}
+            currentColor={(() => {
+              const cs = new Set(names.map((n) => diagram.style?.colors[n]));
+              return cs.size === 1 ? [...cs][0] : undefined;
+            })()}
+            onColor={(color, label) => {
+              onColor?.(names, color, label);
               setSelection(new Set());
             }}
             onDelete={() => {

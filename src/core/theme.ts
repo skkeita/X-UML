@@ -14,6 +14,8 @@ export interface SceneTheme {
   muted: string;
   edge: string;
   accent: string;
+  /** 1 = coins arrondis (par défaut), 0 = coins carrés. */
+  corner?: number;
 }
 
 export const LIGHT: SceneTheme = {
@@ -44,3 +46,44 @@ export const sceneTheme = (name: ThemeName): SceneTheme => (name === 'dark' ? DA
 
 /** Thème d'impression (PDF) : toujours clair, fond blanc, quel que soit le thème de l'écran. */
 export const PRINT: SceneTheme = { ...LIGHT, bg: '#ffffff' };
+
+/* ------------------------------------------------------------------ */
+/* Couleurs personnalisées                                            */
+/* ------------------------------------------------------------------ */
+
+const rgb = (hex: string): [number, number, number] => {
+  const h = hex.replace('#', '');
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+};
+const hexOf = (c: number[]) => `#${c.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
+/** Mélange `a` et `b` (t = part de `b`). */
+export const mix = (a: string, b: string, t: number): string => {
+  const x = rgb(a);
+  const y = rgb(b);
+  return hexOf(x.map((v, i) => v + (y[i] - v) * t));
+};
+/** Luminance relative (0 = noir, 1 = blanc). */
+export const luminance = (hex: string): number => {
+  const [r, g, b] = rgb(hex).map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
+/**
+ * Thème d'un élément coloré : l'en-tête prend la couleur choisie, le corps une teinte plus claire,
+ * et le texte passe en clair ou en foncé selon le contraste (lisible même avec une couleur sombre).
+ */
+export function tinted(theme: SceneTheme, color: string): SceneTheme {
+  const light = luminance(color) > 0.35;
+  const text = light ? '#0f172a' : '#ffffff';
+  return {
+    ...theme,
+    headerFill: color,
+    boxFill: light ? mix(color, '#ffffff', 0.55) : mix(color, '#000000', 0.25),
+    text,
+    muted: light ? '#475569' : '#e2e8f0',
+    boxStroke: light ? mix(color, '#000000', 0.55) : mix(color, '#ffffff', 0.35),
+  };
+}

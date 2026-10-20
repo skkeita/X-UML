@@ -347,3 +347,114 @@ export function deleteNodes(source: string, names: string[]): string {
   }
   return out.join('\n');
 }
+
+/**
+ * Duplique des éléments : leurs déclarations (bloc et membres compris) sont recopiées sous un nouveau nom
+ * (« Chien » → « Chien2 »), ainsi que les liaisons internes à la sélection. Une copie qui hérite d'un
+ * élément copié hérite de sa copie : le sous-ensemble dupliqué reste cohérent.
+ * Renvoie le nouveau script et la correspondance ancien nom → nouveau nom.
+ */
+export function duplicateNodes(source: string, names: string[]): { source: string; renames: Record<string, string> } {
+  const used = new Set(source.match(/[\p{L}_][\p{L}\p{N}_]*/gu) ?? []);
+  const renames: Record<string, string> = {};
+  for (const n of names) {
+    const base = n.replace(/\d+$/, '') || n;
+    let i = 2;
+    while (used.has(`${base}${i}`)) i++;
+    renames[n] = `${base}${i}`;
+    used.add(renames[n]);
+  }
+  const rn = (n: string) => renames[n] ?? n;
+  const lines = source.split('\n');
+  const copies: string[] = [];
+  const declared = new Set<string>();
+  let depth = 0;
+  let copying = false;
+  for (const raw of lines) {
+    const code = raw.replace(/\/\/.*$/, '');
+    const trimmed = code.trim();
+    if (depth > 0) {
+      if (copying) copies.push(raw);
+      if (trimmed === '}') depth--;
+      if (depth === 0) copying = false;
+      continue;
+    }
+    if (GROUP_LINE.test(code)) continue; // un groupe n'est pas dupliqué (ses membres le sont)
+    const head = DECL_HEAD.exec(code);
+    if (head) {
+      const opens = code.includes('{') && !trimmed.endsWith('}');
+      if (head[1] in renames) {
+        declared.add(head[1]);
+        const decl = parseDecl(code.trimEnd());
+        let line: string;
+        if (decl) {
+          decl.name = rn(decl.name);
+          decl.extends = decl.extends.map(rn);
+          decl.implements = decl.implements.map(rn);
+          // parseDecl ne garde pas ce qui suit le nom d'un élément (libellé, type) : on recopie la ligne.
+          line = /\b(?:class|interface|enum)\s/.test(code) ? formatDecl(decl) : code.trimEnd().replace(head[0], head[0].replace(new RegExp(`${head[1]}$`, 'u'), rn(head[1])));
+        } else line = code.trimEnd().replace(head[0], head[0].replace(new RegExp(`${head[1]}$`, 'u'), rn(head[1])));
+        copies.push(line.trimStart());
+        if (opens) {
+          depth = 1;
+          copying = true;
+        }
+      } else if (opens) depth = 1;
+      continue;
+    }
+    const rel = matchRelation(trimmed);
+    if (rel && rel.from in renames && rel.to in renames) {
+      copies.push(`${relationText(rn(rel.from), rel.multFrom, rel.op, rel.multTo, rn(rel.to))}${rel.label ? ` : ${rel.label}` : ''}`);
+    }
+  }
+  // Éléments implicites (cités seulement dans une liaison) : on déclare leur copie.
+  const implicit = names.filter((n) => !declared.has(n)).map((n) => `class ${rn(n)}`);
+  const block = [...implicit, ...copies].join('\n');
+  const trimmed = source.replace(/\s+$/, '');
+  return { source: trimmed ? `${trimmed}\n\n${block}\n` : `${block}\n`, renames };
+}
+
+const COLOR_LINE = /^(\s*)colou?r\s+(.+?)\s+(#[0-9a-fA-F]{3,6}|[a-zA-Zé]+)((?:\s+"[^"]*")?)\s*$/u;
+
+/**
+ * Colore des éléments (ou retire leur couleur si `color` est null). Le libellé devient une entrée de la
+ * légende. Les éléments sont d'abord retirés des lignes « color » existantes (une ligne vidée disparaît),
+ * puis ajoutés à la ligne de même couleur et même libellé si elle existe : le script reste court.
+ */
+export function setColor(source: string, names: string[], color: string | null, label = ''): string {
+  const gone = new Set(names);
+  const lab = label.trim().replace(/"/g, '');
+  const lines = source.split('\n');
+  const out: string[] = [];
+  let target = -1;
+  for (const raw of lines) {
+    const m = COLOR_LINE.exec(raw.replace(/\/\/.*$/, ''));
+    if (!m) {
+      out.push(raw);
+      continue;
+    }
+    const [, indent, list, value, lbl] = m;
+    const kept = list.split(',').map((s) => s.trim()).filter((s) => s && !gone.has(s));
+    const sameTarget = color && value.toLowerCase() === color.toLowerCase() && lbl.trim() === (lab ? `"${lab}"` : '');
+    if (sameTarget) {
+      target = out.length;
+      out.push(`${indent}color ${[...kept, ...names].join(', ')} ${value}${lbl}`);
+    } else if (kept.length) out.push(`${indent}color ${kept.join(', ')} ${value}${lbl}`);
+  }
+  if (color && target < 0) return appendLine(out.join('\n'), `color ${names.join(', ')} ${color}${lab ? ` "${lab}"` : ''}`);
+  return out.join('\n');
+}
+
+/** Coins carrés ou arrondis (arrondis = valeur par défaut : la ligne « style » est alors retirée). */
+export function setCorners(source: string, corners: 'rounded' | 'square'): string {
+  const kept = source.split('\n').filter((l) => !/^\s*style\s+(rounded|square|arrondi|carr[ée])\s*(\/\/.*)?$/iu.test(l));
+  const s = kept.join('\n');
+  return corners === 'square' ? appendLine(s, 'style square') : s;
+}
+
+/** Affiche ou masque la légende (« legend off »). */
+export function setLegendVisible(source: string, visible: boolean): string {
+  const kept = source.split('\n').filter((l) => !/^\s*legende?\s+(off|aucune)\s*(\/\/.*)?$/iu.test(l));
+  const s = kept.join('\n');
+  return visible ? s : appendLine(s, 'legend off');
+}

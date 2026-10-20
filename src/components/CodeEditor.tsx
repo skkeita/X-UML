@@ -26,7 +26,7 @@ interface Props {
 
 // Ordre des alternatives = priorité : commentaire, mot-clé, opérateur, visibilité, accolade, nom de type.
 const TOKEN =
-  /(\/\/.*$)|(\b(?:abstract|class|interface|enum|extends|implements|actor|usecase|object|system|package|diagram)\b)|(\*--|(?<!\w)o--|--\|>|\.\.\|>|-->|\.\.>|--)|(^\s*[+\-#~])|([{}])|(\p{Lu}[\p{L}\p{N}_]*)/gu;
+  /(\/\/.*$)|(\b(?:abstract|class|interface|enum|extends|implements|actor|usecase|object|system|package|diagram|color|style|legend)\b)|(\*--|(?<!\w)o--|--\|>|\.\.\|>|-->|\.\.>|--)|(^\s*[+\-#~])|([{}])|(\p{Lu}[\p{L}\p{N}_]*)/gu;
 
 const CLASSES = [
   'text-slate-400 italic', // 1 commentaire

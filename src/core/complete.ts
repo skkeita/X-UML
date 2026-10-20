@@ -1,3 +1,4 @@
+import { NAMED_COLORS } from './parser';
 import type { Diagram } from './types';
 
 /*
@@ -43,6 +44,11 @@ export const KEYWORDS = [
   'diagram context',
   'diagram package',
   'diagram communication',
+  'color',
+  'style square',
+  'style rounded',
+  'legend',
+  'legend off',
 ];
 
 const MAX = 10;
@@ -98,6 +104,14 @@ export function complete(text: string, caret: number, diagram: Diagram): Complet
       seen.add(m.text);
       members.push({ type: m.kind === 'method' ? 'méthode' : 'attribut', label: m.text, insert: m.text, detail: `dans ${c.name}` });
     }
+  }
+
+  // « color A, B ▮ » : on propose les couleurs nommées.
+  if (/^\s*colou?r\s+\S/.test(before) && !inBlock) {
+    const colors = Object.keys(NAMED_COLORS)
+      .filter((c) => matches(c))
+      .map((c) => ({ type: 'mot-clé' as const, label: c, insert: `${c} `, detail: NAMED_COLORS[c] }));
+    if (colors.length) return { from, to: caret, items: [...colors, ...names].slice(0, MAX) };
   }
 
   const keywords: Suggestion[] = KEYWORDS.filter((k) => matches(k)).map((k) => ({ type: 'mot-clé', label: k, insert: `${k} ` }));

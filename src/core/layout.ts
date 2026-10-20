@@ -1,5 +1,5 @@
 import { computeEdges, type EdgeGeometry } from './routing';
-import type { ClassNode, Diagram, Group, Member, Point, Positions, Rect, Size } from './types';
+import type { ClassNode, Diagram, Group, LegendEntry, Member, Point, Positions, Rect, Size } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Mesure des boîtes (déterministe, sans mesurer le DOM)               */
@@ -439,4 +439,26 @@ export function resolveOverlap(p: Point, size: Size, others: Rect[], gap = MIN_G
     if (best) return best;
   }
   return p;
+}
+
+/* ------------------------------------------------------------------ */
+/* Légende                                                            */
+/* ------------------------------------------------------------------ */
+
+export interface LegendBox extends Rect {
+  title: string;
+  entries: LegendEntry[];
+}
+export const LEGEND_ROW = 22;
+const LEGEND_HEAD = 30;
+
+/** Légende sous le diagramme, alignée à droite : elle ne recouvre jamais un élément. */
+export function legendBox(diagram: Diagram, content: Rect[]): LegendBox | null {
+  const st = diagram.style;
+  if (!st || st.legendHidden || st.legend.length === 0) return null;
+  const title = st.legendTitle?.trim() || 'Légende';
+  const w = Math.ceil(Math.max(title.length * 8 + 28, ...st.legend.map((e) => e.label.length * 7.4 + 52)));
+  const h = LEGEND_HEAD + st.legend.length * LEGEND_ROW + 6;
+  const b = boundsOf(content) ?? { x: 0, y: 0, w, h: 0 };
+  return { x: b.x + b.w - w, y: b.y + b.h + 28, w, h, title, entries: st.legend };
 }

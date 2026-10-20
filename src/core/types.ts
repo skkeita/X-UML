@@ -69,11 +69,29 @@ export interface Relation {
   multTo?: string;
 }
 
+export interface LegendEntry {
+  color: string;
+  label: string;
+}
+
+/** Apparence du tableau, décrite dans le code (« color », « style », « legend »). */
+export interface DiagramStyle {
+  /** Couleur de fond de chaque élément ou groupe coloré (#rrggbb). */
+  colors: Record<string, string>;
+  /** Entrées de la légende : une par couleur libellée, dans l'ordre du script. */
+  legend: LegendEntry[];
+  legendTitle?: string;
+  legendHidden?: boolean;
+  corners: 'rounded' | 'square';
+}
+
 export interface Diagram {
   classes: ClassNode[];
   relations: Relation[];
   /** Packages, frontières de système et cadres de diagramme. */
   groups?: Group[];
+  /** Absent : apparence par défaut (coins arrondis, sans couleur). */
+  style?: DiagramStyle;
 }
 
 export interface ParseError {

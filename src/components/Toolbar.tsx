@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
-import { DownloadIcon, ImageIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
+import { CodeIcon, DownloadIcon, ImageIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -17,12 +17,19 @@ interface Props {
   /** Ouvre le sélecteur de fichier pour importer un projet. */
   onImport: () => void;
   onExportPdf: (ids: string[]) => void;
+  onExportCode: (ids: string[]) => void;
   saveStatus: SaveStatus;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
   relationMode: 'simple' | 'custom';
+  /** Apparence du tableau affiché (écrite dans son code). */
+  corners: 'rounded' | 'square';
+  onCornersChange: (c: 'rounded' | 'square') => void;
+  legendCount: number;
+  legendVisible: boolean;
+  onLegendVisibleChange: (v: boolean) => void;
   onRelationModeChange: (m: 'simple' | 'custom') => void;
 }
 
@@ -113,11 +120,12 @@ export function Toolbar(p: Props) {
           <RedoIcon />
         </Button>
         <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+        <StyleMenu {...p} />
         <Button onClick={p.onImport} title="Importer un projet (Ctrl+O) — ou glissez le fichier sur la fenêtre">
           <UploadIcon />
           <span className="hidden sm:inline">Importer</span>
         </Button>
-        <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
+        <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportCode={p.onExportCode} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
         <Button onClick={p.onToggleTheme} title={p.theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
           {p.theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </Button>
@@ -134,12 +142,14 @@ function ExportMenu({
   boards,
   activeId,
   onExportPdf,
+  onExportCode,
   onExportSvg,
   onExportProject,
 }: {
   boards: { id: string; name: string }[];
   activeId: string;
   onExportPdf: (ids: string[]) => void;
+  onExportCode: (ids: string[]) => void;
   onExportSvg: (ids: string[]) => void;
   onExportProject: (ids: string[]) => void;
 }) {
@@ -234,8 +244,88 @@ function ExportMenu({
             many ? `Code et positions de ${n} tableau${n > 1 ? 'x' : ''}, pour le réimporter plus tard` : 'Le code et la position des classes, pour le réimporter plus tard',
             onExportProject,
           )}
+          {item(
+            <CodeIcon />,
+            'Code du diagramme (.txt)',
+            n > 1 ? `Le script de chaque tableau (${n} fichiers), lisible et réimportable` : 'Le script seul : à lire, versionner (Git) ou réimporter',
+            onExportCode,
+          )}
           {item(<ImageIcon />, 'Image du diagramme (.svg)', n > 1 ? `Une image par tableau (${n} fichiers)` : 'Nette à toutes les tailles, pour un rapport ou un site', onExportSvg)}
           {n === 0 && <p className="px-2.5 pb-1.5 text-xs text-amber-600 dark:text-amber-400">Coche au moins un tableau.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Interrupteur accessible (role="switch"), plus parlant qu'une case à cocher pour un réglage d'affichage. */
+function Switch({ label, hint, checked, disabled, onChange }: { label: string; hint: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent dark:hover:bg-slate-800"
+    >
+      <span className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors ${checked ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}>
+        <span className={`h-3 w-3 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-3' : ''}`} />
+      </span>
+      <span>
+        <span className="block text-sm text-slate-800 dark:text-slate-100">{label}</span>
+        <span className="block text-xs text-slate-500 dark:text-slate-400">{hint}</span>
+      </span>
+    </button>
+  );
+}
+
+/** Menu « Style » : apparence du tableau affiché. Les couleurs se posent sur une sélection (🎨). */
+function StyleMenu(p: Props) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return (
+    <div ref={root} className="relative">
+      <Button onClick={() => setOpen((o) => !o)} title="Style : coins, couleurs, légende" pressed={open}>
+        <PaletteIcon />
+        <span className="hidden lg:inline">Style</span>
+      </Button>
+      {open && (
+        <div role="dialog" aria-label="Style du tableau" className="absolute right-0 top-10 z-30 w-80 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <Switch
+            label="Coins arrondis"
+            hint="Décoché : boîtes à angles droits, plus sobres pour un rapport"
+            checked={p.corners === 'rounded'}
+            onChange={(v) => p.onCornersChange(v ? 'rounded' : 'square')}
+          />
+          <Switch
+            label="Afficher la légende"
+            hint={p.legendCount > 0 ? `${p.legendCount} couleur${p.legendCount > 1 ? 's' : ''} libellée${p.legendCount > 1 ? 's' : ''}, sous le diagramme et dans les exports` : 'Donne un libellé à une couleur pour créer la légende'}
+            checked={p.legendVisible && p.legendCount > 0}
+            disabled={p.legendCount === 0}
+            onChange={p.onLegendVisibleChange}
+          />
+          <div className="mt-1 border-t border-slate-100 px-2.5 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <p>
+              <b className="font-medium text-slate-700 dark:text-slate-200">Couleurs :</b> Shift+clic sur des éléments → 🎨 Couleur.
+            </p>
+            <p className="mt-1">
+              Ou dans le code : <code className="rounded bg-slate-100 px-1 font-mono text-[11px] dark:bg-slate-800">color A, B bleu "Métier"</code>
+            </p>
+          </div>
         </div>
       )}
     </div>
