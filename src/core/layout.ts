@@ -1,4 +1,5 @@
-import type { ClassNode, Diagram, Member, Point, Positions, Rect, Size } from './types';
+import { computeEdges, type EdgeGeometry } from './routing';
+import type { ClassNode, Diagram, Group, Member, Point, Positions, Rect, Size } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Mesure des boîtes (déterministe, sans mesurer le DOM)               */
@@ -29,7 +30,29 @@ export function headerHeight(c: ClassNode): number {
   return c.stereotype ? HEAD_H_STEREO : HEAD_H;
 }
 
+/** Texte affiché pour un élément (libellé s'il diffère de l'identifiant). */
+export const displayName = (c: ClassNode): string => c.label ?? c.name;
+
+/** Taille d'un élément selon sa nature (classe, acteur, cas d'utilisation, objet, système, paquetage). */
 export function measureClass(c: ClassNode): Size {
+  const text = displayName(c);
+  switch (c.kind) {
+    case 'actor':
+      return { w: 60, h: 96 };
+    case 'usecase':
+      return { w: Math.max(130, Math.ceil(text.length * 7.6 + 56)), h: 58 };
+    case 'object':
+      return { w: Math.max(110, Math.ceil(text.length * CHAR_W + 32)), h: 42 };
+    case 'system':
+      return { w: Math.max(170, Math.ceil(text.length * 8.6 + 48)), h: 76 };
+    case 'package':
+      return { w: Math.max(140, Math.ceil(text.length * 8.6 + 40)), h: 74 };
+    default:
+      return measureClassBox(c);
+  }
+}
+
+function measureClassBox(c: ClassNode): Size {
   const { attrs, methods } = splitMembers(c);
   const longestMember = Math.max(0, ...c.members.map((m) => memberLabel(m).length));
   const widest = Math.max(c.name.length * 1.2, longestMember, c.stereotype ? c.stereotype.length + 4 : 0);
@@ -66,10 +89,13 @@ const MARGIN = 40;
 const MAX_PER_ROW = 4;
 
 /** Profondeur hiérarchique : 0 = racine, +1 par niveau d'héritage / réalisation. */
-function computeDepths(diagram: Diagram): Map<string, number> {
+function computeDepths(diagram: Diagram, byDependency = false): Map<string, number> {
   const parents = new Map<string, string[]>();
   for (const r of diagram.relations) {
-    if (r.kind === 'inheritance' || r.kind === 'realization') {
+    if (byDependency) {
+      // Paquetages : celui qui dépend est au-dessus de celui dont il dépend (lecture de haut en bas).
+      if (r.kind === 'dependency' || r.kind === 'directed') parents.set(r.to, [...(parents.get(r.to) ?? []), r.from]);
+    } else if (r.kind === 'inheritance' || r.kind === 'realization') {
       parents.set(r.from, [...(parents.get(r.from) ?? []), r.to]);
     }
   }
@@ -90,15 +116,14 @@ function computeDepths(diagram: Diagram): Map<string, number> {
   return memo;
 }
 
-/** Disposition « idéale » en couches : parents en haut, enfants en dessous, lignes centrées. */
-function idealLayout(diagram: Diagram): Positions {
-  const depths = computeDepths(diagram);
+/** Disposition en couches d'une liste d'éléments : parents en haut, enfants en dessous, lignes centrées. */
+function layeredBlock(diagram: Diagram, nodes: ClassNode[]): { pos: Positions; w: number; h: number } {
+  const depths = computeDepths(diagram, nodes.length > 0 && nodes.every((c) => c.kind === 'package'));
   const layers = new Map<number, ClassNode[]>();
-  for (const c of diagram.classes) {
+  for (const c of nodes) {
     const d = depths.get(c.name) ?? 0;
     layers.set(d, [...(layers.get(d) ?? []), c]);
   }
-
   // Découpe chaque couche en lignes de MAX_PER_ROW boîtes maximum.
   const rows: ClassNode[][] = [];
   [...layers.keys()]
@@ -107,26 +132,187 @@ function idealLayout(diagram: Diagram): Positions {
       const list = layers.get(d) ?? [];
       for (let i = 0; i < list.length; i += MAX_PER_ROW) rows.push(list.slice(i, i + MAX_PER_ROW));
     });
-
-  const sizes = new Map(diagram.classes.map((c) => [c.name, measureClass(c)]));
+  const sizes = new Map(nodes.map((c) => [c.name, measureClass(c)]));
+  // Écart entre deux voisins : assez large pour le libellé des liaisons qui passent entre eux
+  // (messages d'un diagramme de communication, rôles d'une association) — sinon il chevauche les boîtes.
+  const gapsOf = (row: ClassNode[]): number[] =>
+    row.slice(1).map((_, i) => {
+      const left = new Set(row.slice(0, i + 1).map((c) => c.name));
+      const right = new Set(row.slice(i + 1).map((c) => c.name));
+      let widest = 0;
+      for (const r of diagram.relations) {
+        if (!r.label) continue;
+        const crosses = (left.has(r.from) && right.has(r.to)) || (left.has(r.to) && right.has(r.from));
+        if (crosses) widest = Math.max(widest, r.label.replace(/<<|>>/g, '«').length * 6.7 + 8);
+      }
+      return Math.max(H_GAP, Math.ceil(widest + 36));
+    });
   const rowWidth = (row: ClassNode[]) =>
-    row.reduce((sum, c) => sum + (sizes.get(c.name)?.w ?? 0), 0) + H_GAP * (row.length - 1);
+    row.reduce((sum, c) => sum + (sizes.get(c.name)?.w ?? 0), 0) + gapsOf(row).reduce((a, g) => a + g, 0);
   const maxWidth = Math.max(0, ...rows.map(rowWidth));
-
-  const out: Positions = {};
-  let y = MARGIN;
+  const pos: Positions = {};
+  let y = 0;
   for (const row of rows) {
-    let x = MARGIN + (maxWidth - rowWidth(row)) / 2;
+    const gaps = gapsOf(row);
+    let x = (maxWidth - rowWidth(row)) / 2;
     let rowH = 0;
-    for (const c of row) {
-      const s = sizes.get(c.name) ?? { w: MIN_W, h: 60 };
-      out[c.name] = { x: snap(x), y: snap(y) };
-      x += s.w + H_GAP;
-      rowH = Math.max(rowH, s.h);
-    }
+    row.forEach((c, i) => {
+      const sz = sizes.get(c.name) ?? { w: MIN_W, h: 60 };
+      pos[c.name] = { x, y };
+      x += sz.w + (gaps[i] ?? 0);
+      rowH = Math.max(rowH, sz.h);
+    });
     y += rowH + V_GAP;
   }
+  return { pos, w: maxWidth, h: Math.max(0, y - V_GAP) };
+}
+
+/** Colonne d'éléments (acteurs à côté d'un système). */
+function columnBlock(nodes: ClassNode[]): { pos: Positions; w: number; h: number } {
+  const pos: Positions = {};
+  let y = 0;
+  let w = 0;
+  for (const c of nodes) {
+    const sz = measureClass(c);
+    pos[c.name] = { x: 0, y };
+    y += sz.h + 50;
+    w = Math.max(w, sz.w);
+  }
+  return { pos, w, h: Math.max(0, y - 50) };
+}
+
+/** Contexte statique : le système au centre, les autres éléments répartis tout autour. */
+function ringBlock(center: ClassNode, around: ClassNode[]): { pos: Positions; w: number; h: number } {
+  const cs = measureClass(center);
+  const pos: Positions = { [center.name]: { x: 0, y: 0 } };
+  const n = around.length;
+  const rx = cs.w / 2 + 230;
+  const ry = cs.h / 2 + 170;
+  around.forEach((c, i) => {
+    const sz = measureClass(c);
+    // Départ à gauche, sens horaire : les premiers acteurs à gauche, puis en haut, à droite, en bas.
+    const a = Math.PI + (2 * Math.PI * i) / n;
+    pos[c.name] = { x: cs.w / 2 + rx * Math.cos(a) - sz.w / 2, y: cs.h / 2 + ry * Math.sin(a) - sz.h / 2 };
+  });
+  const minX = Math.min(...Object.values(pos).map((p) => p.x));
+  const minY = Math.min(...Object.values(pos).map((p) => p.y));
+  for (const p of Object.values(pos)) {
+    p.x -= minX;
+    p.y -= minY;
+  }
+  return { pos, w: 2 * rx + cs.w, h: 2 * ry + cs.h };
+}
+
+/**
+ * Disposition « idéale » d'un tableau blanc :
+ *  - les membres d'un même groupe (package, système, cadre) sont placés ensemble, dans son cadre
+ *    (récursivement : un système dans un cadre de diagramme garde ses acteurs à l'extérieur) ;
+ *  - les acteurs libres se rangent en colonne à gauche (et à droite s'ils sont nombreux) ;
+ *  - un système seul avec ses acteurs (contexte statique) : système au centre, acteurs autour ;
+ *  - le reste suit la disposition en couches (diagramme de classes).
+ */
+function idealLayout(diagram: Diagram): Positions {
+  const b = arrange(diagram, diagram.classes, diagram.groups ?? []);
+  const out: Positions = {};
+  for (const [name, p] of Object.entries(b.pos)) out[name] = { x: snap(MARGIN + p.x), y: snap(MARGIN + p.y) };
   return out;
+}
+
+type Block = { pos: Positions; w: number; h: number };
+
+function arrange(diagram: Diagram, nodes: ClassNode[], groups: Group[]): Block {
+  const names = new Set(nodes.map((c) => c.name));
+  const byName = new Map(nodes.map((c) => [c.name, c]));
+  const local = groups.filter((g) => g.members.length > 0 && g.members.every((m) => names.has(m)));
+  const contains = (o: Group, g: Group) => o !== g && o.members.length > g.members.length && g.members.every((m) => o.members.includes(m));
+  // Groupes « racines » à ce niveau : non contenus dans un autre groupe local.
+  const roots = local.filter((g) => !local.some((o) => contains(o, g)));
+  const inGroup = new Set(roots.flatMap((g) => g.members));
+  const free = nodes.filter((c) => !inGroup.has(c.name));
+  const freeActors = free.filter((c) => c.kind === 'actor');
+  const freeSystems = free.filter((c) => c.kind === 'system');
+  const others = free.filter((c) => c.kind !== 'actor' && c.kind !== 'system');
+
+  const PAD_TOP = 18 + 26; // marge d'un cadre + son titre
+  const clusters: Block[] = roots.map((g) => {
+    const members = g.members.map((m) => byName.get(m)).filter((c): c is ClassNode => !!c);
+    const inner = local.filter((o) => contains(g, o));
+    const b = inner.length
+      ? arrange(diagram, members, inner)
+      : members.length > 0 && members.every((c) => c.kind === 'usecase')
+        ? gridBlock(members, members.length <= 4 ? 1 : 2) // cas d'utilisation : en colonne(s), comme en UML
+        : arrange(diagram, members, []);
+    // On réserve la place du cadre autour du groupe.
+    for (const p of Object.values(b.pos)) {
+      p.x += 18;
+      p.y += PAD_TOP;
+    }
+    return { pos: b.pos, w: b.w + 36, h: b.h + PAD_TOP + 18 };
+  });
+
+  const blocks: Block[] = [];
+  if (freeSystems.length === 1 && clusters.length === 0 && free.length > 1) {
+    // Contexte statique : tout ce qui est libre tourne autour du système.
+    blocks.push(ringBlock(freeSystems[0], [...freeActors, ...others]));
+  } else if (clusters.length === 0 && freeActors.length === 0) {
+    return layeredBlock(diagram, nodes);
+  } else {
+    const half = freeActors.length > 3 ? Math.ceil(freeActors.length / 2) : freeActors.length;
+    if (freeActors.length) blocks.push(columnBlock(freeActors.slice(0, half)));
+    blocks.push(...clusters);
+    if (freeActors.length > half) blocks.push(columnBlock(freeActors.slice(half)));
+    const rest = [...freeSystems, ...others];
+    if (rest.length) blocks.push(layeredBlock(diagram, rest));
+  }
+  return pack(blocks);
+}
+
+/** Blocs côte à côte (centrés verticalement), avec retour à la ligne au-delà de MAX_ROW_W. */
+function pack(blocks: Block[]): Block {
+  const out: Positions = {};
+  const rows: Block[][] = [];
+  let width = 0;
+  for (const b of blocks) {
+    if (rows.length === 0 || (width + b.w > MAX_ROW_W && rows[rows.length - 1].length > 0)) {
+      rows.push([]);
+      width = 0;
+    }
+    rows[rows.length - 1].push(b);
+    width += b.w + BLOCK_GAP;
+  }
+  let y = 0;
+  let w = 0;
+  for (const row of rows) {
+    const rowH = Math.max(0, ...row.map((b) => b.h));
+    let x = 0;
+    for (const b of row) {
+      const dy = y + (rowH - b.h) / 2;
+      for (const [name, p] of Object.entries(b.pos)) out[name] = { x: x + p.x, y: dy + p.y };
+      x += b.w + BLOCK_GAP;
+    }
+    w = Math.max(w, x - BLOCK_GAP);
+    y += rowH + BLOCK_GAP;
+  }
+  return { pos: out, w, h: Math.max(0, y - BLOCK_GAP) };
+}
+
+const MAX_ROW_W = 1300;
+const BLOCK_GAP = 120;
+
+/** Grille de `cols` colonnes (cas d'utilisation dans un système). */
+function gridBlock(nodes: ClassNode[], cols: number): { pos: Positions; w: number; h: number } {
+  const sizes = nodes.map((c) => measureClass(c));
+  const colW = Math.max(...sizes.map((s) => s.w));
+  const pos: Positions = {};
+  let h = 0;
+  nodes.forEach((c, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const y = row * (sizes[i].h + 40);
+    pos[c.name] = { x: col * (colW + 60) + (colW - sizes[i].w) / 2, y };
+    h = Math.max(h, y + sizes[i].h);
+  });
+  return { pos, w: cols * colW + (cols - 1) * 60, h };
 }
 
 export const snap = (v: number): number => Math.round(v / GRID) * GRID;
@@ -169,6 +355,54 @@ export function layoutNewClasses(diagram: Diagram, known: Positions): Positions 
 /* ------------------------------------------------------------------ */
 
 export { computeEdges, type EdgeGeometry } from './routing';
+
+/* ------------------------------------------------------------------ */
+/* Groupes : cadres autour de leurs membres                            */
+/* ------------------------------------------------------------------ */
+
+/** Marge intérieure d'un cadre ; le haut laisse la place au titre / à l'onglet. */
+const FRAME_PAD = 18;
+const FRAME_TITLE = 26;
+
+/**
+ * Rectangle de chaque groupe : englobe ses membres et les groupes qu'il contient entièrement,
+ * avec une marge (un cadre imbriqué reste ainsi visible à l'intérieur de son parent).
+ */
+export function computeFrames(groups: Group[], boxes: Record<string, Rect>): Record<string, Rect> {
+  const frames: Record<string, Rect> = {};
+  const sorted = [...groups].sort((a, b) => a.members.length - b.members.length);
+  for (const g of sorted) {
+    const inner = sorted.filter((o) => o !== g && frames[o.name] && o.members.every((m) => g.members.includes(m)));
+    const rects = [...g.members.map((m) => boxes[m]).filter(Boolean), ...inner.map((o) => frames[o.name])];
+    const b = boundsOf(rects);
+    if (!b) continue;
+    frames[g.name] = { x: b.x - FRAME_PAD, y: b.y - FRAME_PAD - FRAME_TITLE, w: b.w + 2 * FRAME_PAD, h: b.h + 2 * FRAME_PAD + FRAME_TITLE };
+  }
+  return frames;
+}
+
+export interface Scene {
+  boxes: Record<string, Rect>;
+  frames: Record<string, Rect>;
+  edges: EdgeGeometry[];
+}
+
+/** Tout ce qu'il faut pour dessiner : boîtes, cadres de groupes et tracés des liens. */
+export function computeScene(diagram: Diagram, positions: Positions): Scene {
+  return sceneFromBoxes(diagram, computeBoxes(diagram, positions));
+}
+
+/** Variante à partir des boîtes déjà calculées (export). */
+export function sceneFromBoxes(diagram: Diagram, boxes: Record<string, Rect>): Scene {
+  const frames = computeFrames(diagram.groups ?? [], boxes);
+  const shapes: Record<string, 'ellipse' | 'actor'> = {};
+  for (const c of diagram.classes) {
+    if (c.kind === 'usecase') shapes[c.name] = 'ellipse';
+    else if (c.kind === 'actor') shapes[c.name] = 'actor';
+  }
+  const edges = computeEdges(diagram.relations, { ...boxes, ...frames }, { frames: new Set(Object.keys(frames)), shapes });
+  return { boxes, frames, edges };
+}
 
 /* ------------------------------------------------------------------ */
 /* Classes jamais superposées                                          */

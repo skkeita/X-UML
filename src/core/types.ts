@@ -10,11 +10,38 @@ export interface Member {
   kind: MemberKind;
 }
 
+/** Nature d'un élément du tableau blanc. */
+export type NodeKind = 'class' | 'actor' | 'usecase' | 'object' | 'system' | 'package';
+
 export interface ClassNode {
   name: string;
+  /** Classe par défaut ; sinon acteur, cas d'utilisation, objet ou système. */
+  kind?: NodeKind;
+  /** Texte affiché quand il diffère de l'identifiant (ex. usecase PasserCommande "Passer une commande"). */
+  label?: string;
   stereotype?: Stereotype;
   members: Member[];
   /** Ligne (1-based) de la déclaration, utile pour les messages d'erreur. */
+  line: number;
+  /** Créé seulement parce qu'il est cité (liaison, groupe) : pas de déclaration propre. */
+  implicit?: boolean;
+}
+
+/** Types de diagrammes qu'un cadre peut porter (« typer » une sélection). */
+export type DiagramType = 'class' | 'usecase' | 'context' | 'package' | 'communication';
+
+/**
+ * Groupe d'éléments, dessiné comme un cadre autour de ses membres :
+ *  - package : dossier UML ;
+ *  - system  : frontière du système (diagramme de cas d'utilisation) ;
+ *  - frame   : cadre de diagramme typé (« uc Gestion des commandes »).
+ */
+export interface Group {
+  name: string;
+  kind: 'package' | 'system' | 'frame';
+  title: string;
+  diagramType?: DiagramType;
+  members: string[];
   line: number;
 }
 
@@ -37,11 +64,16 @@ export interface Relation {
   auto?: boolean;
   /** Origine d'une liaison automatique : « extends », « implements », ou le type d'un attribut / d'une méthode. */
   via?: 'extends' | 'implements' | 'member';
+  /** Multiplicités aux extrémités (ex. "1" et "0..*"). */
+  multFrom?: string;
+  multTo?: string;
 }
 
 export interface Diagram {
   classes: ClassNode[];
   relations: Relation[];
+  /** Packages, frontières de système et cadres de diagramme. */
+  groups?: Group[];
 }
 
 export interface ParseError {

@@ -1,4 +1,4 @@
-import { RELATION } from './parser';
+import { matchRelation } from './parser';
 
 /*
  * Vues partielles de l'éditeur de code.
@@ -14,12 +14,12 @@ import { RELATION } from './parser';
  * qui reste l'unique source de vérité (sauvegarde, export, annulation).
  */
 
-const DECL = /^(?:abstract\s+class|class|interface|enum)\s+([\p{L}_][\p{L}\p{N}_]*)/u;
+const DECL = /^(?:abstract\s+class|class|interface|enum|actor|usecase|object|system|package)\s+([\p{L}_][\p{L}\p{N}_]*)/u;
 
 const code = (line: string) => line.replace(/\/\/.*$/, '').trim();
 
 /** Vrai si la ligne (hors bloc de classe) est une liaison. */
-const isRelation = (c: string) => RELATION.test(c);
+const isRelation = (c: string) => matchRelation(c) !== null;
 
 /** Indices (base 0, croissants) de toutes les lignes du script SAUF les liaisons. */
 export function codeLines(source: string): number[] {
@@ -75,8 +75,8 @@ export function focusLines(source: string, name: string, withRelations = true): 
       continue;
     }
     if (!withRelations) continue;
-    const rel = RELATION.exec(c);
-    if (rel && (rel[1] === name || rel[3] === name)) out.push(i);
+    const rel = matchRelation(c);
+    if (rel && (rel.from === name || rel.to === name)) out.push(i);
   }
   return out;
 }

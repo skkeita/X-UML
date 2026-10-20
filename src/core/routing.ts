@@ -575,6 +575,21 @@ function foreignZones(edges: EdgeGeometry[], self: number): Zone[] {
   return out;
 }
 
+/** Position d'une multiplicité près d'une extrémité (à côté du trait, jamais dessus). */
+export function multPosition(pts: Point[], end: 'start' | 'end'): Point {
+  const [p, q] = end === 'start' ? [pts[0], pts[1]] : [pts[pts.length - 1], pts[pts.length - 2]];
+  const len = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+  const dx = (q.x - p.x) / len;
+  const dy = (q.y - p.y) / len;
+  return { x: p.x + dx * 18 - dy * 11, y: p.y + dy * 18 + dx * 11 + 4 };
+}
+
+/** Zone occupée par le texte d'une multiplicité (ligne de base en `at.y`). */
+function multZone(at: Point, text: string): Zone {
+  const w = text.length * 6.7 + 4;
+  return { x0: at.x - w / 2, x1: at.x + w / 2, y0: at.y - 11, y1: at.y + 3 };
+}
+
 /** Largeur approximative d'un libellé (police monospace 11 px). */
 const labelWidth = (text: string) => text.length * 6.7 + 8;
 
@@ -600,10 +615,13 @@ function placeLabel(e: EdgeGeometry, edges: EdgeGeometry[], boxes: Rect[], taken
     !zones.some((z) => r.x1 > z.x0 && r.x0 < z.x1 && r.y1 > z.y0 && r.y0 < z.y1) &&
     !taken.some((z) => r.x1 > z.x0 && r.x0 < z.x1 && r.y1 > z.y0 && r.y0 < z.y1);
 
+  // 1er passage : le libellé tient le long d'un segment ; 2e passage : il peut déborder (segment trop court).
+  for (const overflow of [false, true]) {
   for (const { p, q, len } of segs) {
     const horizontal = Math.abs(p.y - q.y) < 0.01;
-    if (horizontal && len < w + 8) continue;
-    if (!horizontal && len < 24) continue;
+    if (!overflow && horizontal && len < w + 8) continue;
+    if (!overflow && !horizontal && len < 24) continue;
+    if (overflow && len < 16) continue;
     // Plusieurs positions le long du segment : milieu d'abord, puis vers chaque extrémité.
     for (const t of [0.5, 0.35, 0.65, 0.2, 0.8]) {
       const mx = p.x + (q.x - p.x) * t;
@@ -618,16 +636,17 @@ function placeLabel(e: EdgeGeometry, edges: EdgeGeometry[], boxes: Rect[], taken
             { at: { x: mx - 6 - w / 2, y: my + 4 }, box: { x0: mx - 8 - w, x1: mx - 4, y0: my - 8, y1: my + 8 } },
           ];
       for (const c of candidates) {
-        // Le libellé doit rester le long du segment (pas au-delà de ses extrémités).
+        // Le libellé doit rester le long du segment (pas au-delà de ses extrémités)… sauf en dernier recours.
         const inside = horizontal
           ? c.box.x0 >= Math.min(p.x, q.x) - 2 && c.box.x1 <= Math.max(p.x, q.x) + 2
           : c.box.y0 >= Math.min(p.y, q.y) - 2 && c.box.y1 <= Math.max(p.y, q.y) + 2;
-        if (inside && free(c.box)) {
+        if ((inside || overflow) && free(c.box)) {
           taken.push(c.box);
           return c.at;
         }
       }
     }
+  }
   }
   return e.label;
 }
@@ -656,7 +675,19 @@ const toPath = (points: Point[]): string =>
 /* Point d'entrée                                                      */
 /* ------------------------------------------------------------------ */
 
-export function computeEdges(relations: Relation[], boxes: Record<string, Rect>): EdgeGeometry[] {
+export interface RouteOptions {
+  /** Cadres de groupes : extrémités possibles d'un lien, mais jamais des obstacles (ils sont « transparents »). */
+  frames?: Set<string>;
+  /** Formes non rectangulaires : l'extrémité du lien est ramenée sur la forme réelle. */
+  shapes?: Record<string, 'ellipse' | 'actor'>;
+}
+
+export function computeEdges(relations: Relation[], boxes: Record<string, Rect>, opts: RouteOptions = {}): EdgeGeometry[] {
+  const frames = opts.frames ?? new Set<string>();
+  /** Seuls les éléments (pas les cadres) bloquent le passage des liens. */
+  const solid = Object.entries(boxes)
+    .filter(([name]) => !frames.has(name))
+    .map(([, rect]) => rect);
   const plans: Plan[] = [];
   relations.forEach((r, index) => {
     const a = boxes[r.from];
@@ -764,7 +795,7 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>)
     }
 
     const obstacles = Object.entries(boxes)
-      .filter(([name]) => name !== r.from && name !== r.to)
+      .filter(([name]) => name !== r.from && name !== r.to && !frames.has(name))
       .map(([, rect]) => rect);
 
     let points = zRoute(pa, pb, p.vertical);
@@ -775,7 +806,7 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>)
         if (which === 'b' && side === p.sideB) return pb;
         return sideCenter(box, side);
       };
-      const routed = searchRoute(a, b, Object.values(boxes), p.sideA, p.sideB, portFor, edges.map((e) => e.points));
+      const routed = searchRoute(a, b, solid, p.sideA, p.sideB, portFor, edges.map((e) => e.points));
       if (routed) points = routed;
     }
 
@@ -791,7 +822,7 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>)
   });
 
   // Passe de lisibilité n° 1 : un lien ne doit pas passer sur la pointe de flèche d'un autre.
-  const allBoxes = Object.values(boxes);
+  const allBoxes = solid;
   for (let pass = 0; pass < 2; pass++) {
     let changed = false;
     edges.forEach((e, i) => {
@@ -821,10 +852,51 @@ export function computeEdges(relations: Relation[], boxes: Record<string, Rect>)
     if (!changed) break;
   }
 
-  // Passe n° 2 : chaque libellé trouve une place où il ne masque rien.
+  // Passe n° 2 : chaque libellé trouve une place où il ne masque rien (ni les multiplicités).
   const taken: Zone[] = [];
+  for (const e of edges) {
+    if (e.points.length < 2) continue;
+    if (e.relation.multFrom) taken.push(multZone(multPosition(e.points, 'start'), e.relation.multFrom));
+    if (e.relation.multTo) taken.push(multZone(multPosition(e.points, 'end'), e.relation.multTo));
+  }
   edges.forEach((e, i) => {
     if (e.relation.label) edges[i] = { ...e, label: placeLabel(e, edges, allBoxes, taken) };
+  });
+
+  // Passe n° 3 (esthétique) : sur une ellipse ou un acteur, le trait touche la forme elle-même.
+  const shapes = opts.shapes ?? {};
+  edges.forEach((e, i) => {
+    const pts = e.points.map((p) => ({ ...p }));
+    const fit = (end: 0 | 1, name: string) => {
+      const shape = shapes[name];
+      const r = boxes[name];
+      if (!shape || !r || pts.length < 2) return;
+      const k = end === 0 ? 0 : pts.length - 1;
+      const n = end === 0 ? 1 : pts.length - 2;
+      const p = pts[k];
+      const vertical = Math.abs(p.x - pts[n].x) < 0.01;
+      const cx = r.x + r.w / 2;
+      const cy = r.y + r.h / 2;
+      if (shape === 'ellipse') {
+        const rx = r.w / 2;
+        const ry = r.h / 2;
+        if (vertical && Math.abs(p.x - cx) < rx - 2) {
+          const dy = ry * Math.sqrt(1 - ((p.x - cx) / rx) ** 2);
+          p.y = p.y < cy ? cy - dy : cy + dy;
+        } else if (!vertical && Math.abs(p.y - cy) < ry - 2) {
+          const dx = rx * Math.sqrt(1 - ((p.y - cy) / ry) ** 2);
+          p.x = p.x < cx ? cx - dx : cx + dx;
+        }
+      } else if (!vertical && p.y > r.y + 18 && p.y < r.y + 70) {
+        // Acteur : le trait s'arrête au bout des bras / du corps, pas au bord de la zone du nom.
+        p.x = p.x < cx ? cx - 18 : cx + 18;
+      } else if (vertical && p.y < cy) {
+        p.y = r.y + 2;
+      }
+    };
+    fit(0, e.relation.from);
+    fit(1, e.relation.to);
+    if (pts.some((p, j) => p.x !== e.points[j].x || p.y !== e.points[j].y)) edges[i] = { ...e, points: pts, d: toPath(pts) };
   });
   return edges;
 }

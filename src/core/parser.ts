@@ -4,7 +4,10 @@ const IDENT_G = new RegExp(IDENT, 'gu');
 import type {
   ClassNode,
   Diagram,
+  DiagramType,
+  Group,
   Member,
+  NodeKind,
   ParseError,
   ParseResult,
   Relation,
@@ -28,6 +31,18 @@ import type {
  *   Personne -- Adresse          (association)   *-- composition   o-- agrégation   ..> dépendance
  *
  *   class Chien extends Animal implements Domestique {   (liaisons créées automatiquement)
+ *   Client "1" -- "0..*" Commande : passe                 (multiplicités)
+ *
+ * Tableau blanc — autres éléments UML :
+ *   actor Client "Client fidèle"         acteur (bonhomme)
+ *   usecase Payer "Payer la commande"    cas d'utilisation (ellipse)
+ *   object c1 : Client                   objet (diagramme de communication)
+ *   system Boutique                      système (diagramme de contexte statique)
+ *   package Ventes                       paquetage (diagramme de paquetages)
+ * Groupes (cadres autour d'éléments existants) :
+ *   package Animaux : Chien, Chat        package qui regroupe des classes
+ *   system Boutique : Payer, Commander   frontière du système (cas d'utilisation)
+ *   diagram usecase "Commandes" : …      cadre de diagramme typé (class, usecase, context, package, communication)
  *
  * Les classes citées uniquement dans une relation sont créées implicitement.
  * UX : les identifiants acceptent les lettres accentuées (Étudiant, Réservation...).
@@ -35,10 +50,51 @@ import type {
 
 
 // L'ordre des alternatives compte : les opérateurs les plus longs d'abord.
+// Multiplicités facultatives entre guillemets : A "1" -- "0..*" B
 export const RELATION = new RegExp(
-  `^(${IDENT})\\s*(\\*--|o--|--\\|>|\\.\\.\\|>|-->|\\.\\.>|--)\\s*(${IDENT})\\s*(?::\\s*(.+))?$`,
+  `^(${IDENT})\\s*(?:"([^"]*)"\\s*)?(\\*--|o--|--\\|>|\\.\\.\\|>|-->|\\.\\.>|--)\\s*(?:"([^"]*)"\\s*)?(${IDENT})\\s*(?::\\s*(.+))?$`,
   'u',
 );
+
+export interface RelationLine {
+  from: string;
+  op: string;
+  to: string;
+  label?: string;
+  multFrom?: string;
+  multTo?: string;
+}
+
+/** Reconnaît une ligne de liaison (code sans commentaire, « trimé »). */
+export function matchRelation(code: string): RelationLine | null {
+  const m = RELATION.exec(code);
+  if (!m) return null;
+  const [, from, multFrom, op, multTo, to, label] = m;
+  return {
+    from,
+    op,
+    to,
+    label: label?.trim() || undefined,
+    multFrom: multFrom?.trim() || undefined,
+    multTo: multTo?.trim() || undefined,
+  };
+}
+
+const LIST = `${IDENT}(?:\\s*,\\s*${IDENT})*`;
+/** actor / usecase / object / system / package (élément simple, libellé facultatif). */
+const ELEMENT = new RegExp(`^(actor|usecase|object|system|package)\\s+(${IDENT})(?:\\s*:\\s*(${IDENT}))?(?:\\s+"([^"]*)")?$`, 'u');
+/** package / system avec membres : un groupe dessiné autour d'eux. */
+const GROUP = new RegExp(`^(package|system)\\s+(${IDENT})(?:\\s+"([^"]*)")?\\s*:\\s*(${LIST})$`, 'u');
+/** Cadre de diagramme typé. */
+const FRAME = new RegExp(`^diagram\\s+(class|usecase|context|package|communication)(?:\\s+"([^"]*)")?\\s*:\\s*(${LIST})$`, 'u');
+
+const FRAME_TITLE: Record<DiagramType, string> = {
+  class: 'Diagramme de classes',
+  usecase: 'Cas d’utilisation',
+  context: 'Contexte statique',
+  package: 'Paquetages',
+  communication: 'Communication',
+};
 
 const MEMBER = /^([+\-#~])?\s*(.+)$/;
 
@@ -79,10 +135,11 @@ export function parse(source: string): ParseResult {
   /** Membres à analyser une fois toutes les classes connues (elles peuvent être déclarées plus bas). */
   const memberRefs: { cls: string; member: Member; line: number }[] = [];
 
-  const ensureClass = (name: string, line: number): ClassNode => {
+  const groups: Group[] = [];
+  const ensureClass = (name: string, line: number, implicit = false): ClassNode => {
     let node = classes.get(name);
     if (!node) {
-      node = { name, members: [], line };
+      node = { name, members: [], line, ...(implicit ? { implicit: true } : {}) };
       classes.set(name, node);
     }
     return node;
@@ -105,7 +162,50 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
-    // 2) Déclaration de classe / interface / enum
+    // 2a) Groupes : package / système avec membres, cadres de diagramme typés
+    const group = GROUP.exec(line);
+    if (group) {
+      const [, kw, name, title, list] = group;
+      const members = list.split(',').map((m) => m.trim());
+      for (const m of members) ensureClass(m, lineNo, true);
+      groups.push({ name, kind: kw === 'package' ? 'package' : 'system', title: title ?? name, members, line: lineNo });
+      continue;
+    }
+    const frame = FRAME.exec(line);
+    if (frame) {
+      const [, type, title, list] = frame;
+      const members = list.split(',').map((m) => m.trim());
+      for (const m of members) ensureClass(m, lineNo, true);
+      const diagramType = type as DiagramType;
+      groups.push({
+        name: `diagram${lineNo}`,
+        kind: 'frame',
+        diagramType,
+        title: title ?? FRAME_TITLE[diagramType],
+        members,
+        line: lineNo,
+      });
+      continue;
+    }
+
+    // 2b) Éléments du tableau blanc : acteur, cas d'utilisation, objet, système, paquetage
+    const el = ELEMENT.exec(line);
+    if (el) {
+      const [, kw, name, type, label] = el;
+      if (type && kw !== 'object') {
+        errors.push({ line: lineNo, message: `« ${kw} ${name} : ${type} » : seul un objet a un type (object c1 : Client)` });
+        continue;
+      }
+      const node = ensureClass(name, lineNo);
+      node.kind = kw as NodeKind;
+      node.implicit = false;
+      node.line = lineNo;
+      node.label = kw === 'object' ? `${name}${type ? ` : ${type}` : ''}` : label;
+      if (kw === 'object' && label) node.label = label;
+      continue;
+    }
+
+    // 2c) Déclaration de classe / interface / enum
     const decl = parseDecl(line);
     if (decl) {
       const { keyword, name } = decl;
@@ -114,6 +214,8 @@ export function parse(source: string): ParseResult {
         errors.push({ line: lineNo, message: `« ${name} » est déjà déclarée ligne ${existing.line}` });
       }
       const node = ensureClass(name, lineNo);
+      node.implicit = false;
+      node.line = lineNo;
       const stereotype = stereotypeOf(keyword);
       if (stereotype) node.stereotype = stereotype;
       // Héritage écrit dans le code → liaisons créées automatiquement.
@@ -130,17 +232,18 @@ export function parse(source: string): ParseResult {
     }
 
     // 3) Relation
-    const rel = RELATION.exec(line);
+    const rel = matchRelation(line);
     if (rel) {
-      const [, from, op, to, label] = rel;
-      ensureClass(from, lineNo);
-      ensureClass(to, lineNo);
+      ensureClass(rel.from, lineNo, true);
+      ensureClass(rel.to, lineNo, true);
       relations.push({
-        from,
-        to,
-        kind: OPERATORS[op],
-        label: label?.trim() || undefined,
+        from: rel.from,
+        to: rel.to,
+        kind: OPERATORS[rel.op],
+        label: rel.label,
         line: lineNo,
+        ...(rel.multFrom ? { multFrom: rel.multFrom } : {}),
+        ...(rel.multTo ? { multTo: rel.multTo } : {}),
       });
       continue;
     }
@@ -189,6 +292,13 @@ export function parse(source: string): ParseResult {
     memberRelations.push(r);
   }
 
+  // Un nom de groupe cité dans une liaison désigne le groupe (package → package), pas une classe.
+  const groupNames = new Set(groups.map((g) => g.name));
+  for (const [name, node] of classes) if (node.implicit && groupNames.has(name)) classes.delete(name);
+  // Les éléments implicites restent des classes ; on retire le marqueur pour garder un modèle simple.
+  for (const node of classes.values()) delete node.implicit;
+
   const diagram: Diagram = { classes: [...classes.values()], relations: [...unique, ...memberRelations] };
+  if (groups.length) diagram.groups = groups;
   return { diagram, errors };
 }
