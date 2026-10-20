@@ -714,7 +714,7 @@ export function Canvas({
       </div>
 
       <p className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] lg:block" style={{ color: theme.muted }}>
-        Glisser : déplacer · Shift+clic ou Shift+glisser : sélection multiple · Poignée ◦ : nouvelle relation · Ctrl+Z : annuler
+        Glisser : déplacer · Shift+clic ou Shift+glisser : sélection multiple · Poignée ronde : nouvelle relation · Ctrl+Z : annuler
       </p>
     </div>
   );

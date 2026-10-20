@@ -5,6 +5,7 @@ import type { MemberDraft } from '../core/modelEdit';
 import { NAMED_COLORS } from '../core/parser';
 import type { ClassNode, Diagram, DiagramType, Group, Member, RelationKind, Visibility } from '../core/types';
 import { DIAGRAM_TYPE_ORDER, ELEMENT_LABEL, NAME_OF, VOCABULARIES, elementKindOf, type ElementKind, type Vocabulary } from '../core/vocabulary';
+import { CloseIcon, CopyIcon, TrashIcon } from './Icons';
 import { RelationsPanel } from './RelationsPanel';
 
 /*
@@ -209,7 +210,7 @@ function MemberList({
               title="Retirer"
               className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
             >
-              ✕
+              <CloseIcon />
             </button>
           </li>
         ))}
@@ -610,9 +611,9 @@ function ElementSheet(p: Props & { node: ClassNode; elements: { name: string; la
             const [copy] = p.onDuplicate([name]);
             if (copy) p.onSelect(copy);
           }}
-          className="flex-1 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
         >
-          ⧉ Dupliquer
+          <CopyIcon /> Dupliquer
         </button>
         <button
           type="button"
@@ -620,9 +621,9 @@ function ElementSheet(p: Props & { node: ClassNode; elements: { name: string; la
             p.onDelete([name]);
             p.onSelect(null);
           }}
-          className="flex-1 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-500/10"
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-500/10"
         >
-          Supprimer
+          <TrashIcon /> Supprimer
         </button>
       </div>
     </div>

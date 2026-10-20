@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { NAMED_COLORS } from '../core/parser';
+import { CloseIcon, CopyIcon, FolderIcon, FrameIcon, PaletteSmallIcon, PencilIcon, SystemIcon, TrashIcon, UngroupIcon } from './Icons';
 import type { DiagramType, LegendEntry } from '../core/types';
 
 /** Types de diagramme proposés pour « typer » une sélection. */
@@ -122,7 +123,8 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
           {frame && (
             <div className="mb-0.5 flex items-center gap-0.5 border-b border-slate-100 pb-0.5 dark:border-slate-800">
               <span className="min-w-0 max-w-[220px] flex-1 truncate px-2 text-xs font-semibold text-slate-700 dark:text-slate-200" title={frame.title}>
-                {frame.kind === 'package' ? '📁' : frame.kind === 'system' ? '▭' : '🏷️'} {frame.title}
+                <span className="mr-1 inline-flex align-[-2px] text-slate-400">{frame.kind === 'package' ? <FolderIcon /> : frame.kind === 'system' ? <SystemIcon /> : <FrameIcon />}</span>
+                {frame.title}
               </span>
               <button
                 type="button"
@@ -133,10 +135,10 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
                 }}
                 title="Renommer ce groupe (ou double-clic sur son titre)"
               >
-                ✏️ Renommer
+                <PencilIcon /> Renommer
               </button>
               <button type="button" className={btn} onClick={onUngroup} title="Retirer le cadre : les éléments restent, à leur place">
-                ⊟ Dégrouper
+                <UngroupIcon /> Dégrouper
               </button>
             </div>
           )}
@@ -145,22 +147,22 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
             {names.length} élément{names.length > 1 ? 's' : ''}
           </span>
           <button type="button" className={btn} onClick={() => setStep('package')} title={groupAction}>
-            📁 {groupAction}
+            <FolderIcon /> {groupAction}
           </button>
           <button type="button" className={btn} onClick={onDuplicate} title="Dupliquer (Ctrl+D) : copies décalées, avec leurs membres et leurs liaisons internes">
-            ⧉ Dupliquer
+            <CopyIcon /> Dupliquer
           </button>
           <button type="button" className={btn} onClick={() => setStep('color')} title="Couleur de fond (et entrée de légende)">
-            🎨 Couleur
+            <PaletteSmallIcon /> Couleur
           </button>
           <button type="button" className={btn} onClick={() => setStep('type')} title="Encadrer la sélection comme un diagramme d’un type donné (uc, ctx, pkg…)">
-            🏷️ Cadre de diagramme
+            <FrameIcon /> Cadre de diagramme
           </button>
           <button type="button" className={`${btn} text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10`} onClick={onDelete} title="Supprimer les éléments sélectionnés (Suppr)">
-            🗑️ Supprimer
+            <TrashIcon /> Supprimer
           </button>
           <button type="button" className={btn} onClick={onClear} title="Désélectionner (Échap)" aria-label="Désélectionner">
-            ✕
+            <CloseIcon />
           </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { RelationChange, RelationRef } from '../core/edit';
 import type { Relation, RelationKind } from '../core/types';
 import { changeForChoice, isStereotypeLabel, relationChoiceOf, type RelationChoice, type Vocabulary } from '../core/vocabulary';
+import { CloseIcon, SwapIcon } from './Icons';
 import { RelationGlyph } from './RelationPicker';
 
 interface Props {
@@ -196,7 +197,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
         <div className={embedded ? '' : 'min-h-0 flex-1 overflow-auto px-2 pb-2'}>
           {list.length === 0 ? (
             <p className="px-1 py-2 text-xs leading-relaxed text-slate-400">
-              Aucune {vocab.relation}. Cliquez sur « + Ajouter », ou tirez un trait depuis un rond ◦ sur le bord d’un élément du diagramme.
+              Aucune {vocab.relation}. Cliquez sur « + Ajouter », ou tirez un trait depuis l’une des poignées rondes au bord d’un élément du diagramme.
             </p>
           ) : (
             <ul className="flex flex-col gap-1">
@@ -235,7 +236,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
                           aria-label="Inverser le sens"
                           className="flex h-7 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                         >
-                          ⇄
+                          <SwapIcon />
                         </button>
                         <button
                           type="button"
@@ -245,7 +246,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
                           aria-label={`Supprimer la ${vocab.relation}`}
                           className="flex h-7 w-6 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-red-500/10"
                         >
-                          ✕
+                          <CloseIcon />
                         </button>
                       </div>
                     </div>
@@ -255,7 +256,6 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
                           title={autoHint(r)}
                           className="flex h-6 items-center gap-1 truncate rounded-md bg-indigo-50 px-1.5 text-[10.5px] font-medium text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300"
                         >
-                          <span aria-hidden="true">⚡</span>
                           {choice?.label ?? r.kind} · déduite
                         </span>
                       ) : stereo ? (

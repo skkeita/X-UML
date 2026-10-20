@@ -46,7 +46,7 @@ export function CompletionMenu({ items, active, left, top, onPick, onHover }: Pr
         ))}
       </ul>
       <div className="border-t border-slate-100 px-2.5 py-1 text-[10.5px] text-slate-400 dark:border-slate-800">
-        ↑↓ choisir · Entrée ou Tab valider · Échap fermer
+        Flèches : choisir · Entrée ou Tab : valider · Échap : fermer
       </div>
     </div>
   );
