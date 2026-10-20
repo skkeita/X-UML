@@ -13,6 +13,7 @@ import { parse } from './core/parser';
 import { VOCABULARIES, inferDiagramType, summarize, type ElementKind } from './core/vocabulary';
 import { addElement, renameElement, setElementKind, setGroupTitle, setElementLabel, setGroupOf, setMembers, setObjectType, setParents, type MemberDraft } from './core/modelEdit';
 import { Inspector } from './components/Inspector';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
@@ -679,6 +680,7 @@ export default function App() {
         leftOpen={editorOpen}
         left={editorPanel}
         right={
+          <ErrorBoundary resetKey={`${active.id}|${source}|${JSON.stringify(stored)}`} onUndo={undo}>
           <Canvas
             diagram={diagram}
             positions={positions}
@@ -707,6 +709,7 @@ export default function App() {
             }
             focus={focusActive ? focusName : null}
           />
+          </ErrorBoundary>
         }
       />
       {dragOver && (
