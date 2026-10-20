@@ -36,14 +36,14 @@ const CLASS_DECL = new RegExp(
 );
 
 // L'ordre des alternatives compte : les opérateurs les plus longs d'abord.
-const RELATION = new RegExp(
+export const RELATION = new RegExp(
   `^(${IDENT})\\s*(\\*--|o--|--\\|>|\\.\\.\\|>|-->|\\.\\.>|--)\\s*(${IDENT})\\s*(?::\\s*(.+))?$`,
   'u',
 );
 
 const MEMBER = /^([+\-#~])?\s*(.+)$/;
 
-const OPERATORS: Record<string, RelationKind> = {
+export const OPERATORS: Record<string, RelationKind> = {
   '--': 'association',
   '-->': 'directed',
   '--|>': 'inheritance',

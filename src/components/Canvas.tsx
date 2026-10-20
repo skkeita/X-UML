@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { GRID, boundsOf, computeBoxes, snap } from '../core/layout';
+import { RELATION_CHOICES, type RelationChange, type RelationRef } from '../core/edit';
+import { GRID, boundsOf, computeBoxes, computeEdges, snap } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
-import type { Diagram, Point, Positions } from '../core/types';
+import type { Diagram, Point, Positions, Relation } from '../core/types';
 import { DiagramScene } from './DiagramScene';
 import { FitIcon } from './Icons';
+import { RelationPicker } from './RelationPicker';
 
 interface Props {
   diagram: Diagram;
   positions: Positions;
   theme: SceneTheme;
   onMove: (name: string, p: Point) => void;
+  onRelationChange: (ref: RelationRef, change: RelationChange) => void;
+  onRelationDelete: (ref: RelationRef) => void;
 }
 
 interface View {
@@ -26,15 +30,50 @@ const MIN_K = 0.2;
 const MAX_K = 3;
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
-export function Canvas({ diagram, positions, theme, onMove }: Props) {
+export function Canvas({ diagram, positions, theme, onMove, onRelationChange, onRelationDelete }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const didFit = useRef(false);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<number | null>(null);
   const [panning, setPanning] = useState(false);
 
   const boxes = useMemo(() => computeBoxes(diagram, positions), [diagram, positions]);
+  const edges = useMemo(() => computeEdges(diagram.relations, boxes), [diagram, boxes]);
+
+  // Lien sélectionné (identifié par sa ligne source). S'il disparaît du texte, le panneau se ferme seul.
+  const activeEdge = selectedEdge === null ? undefined : edges.find((e) => e.relation.line === selectedEdge);
+  const activeRef: RelationRef | null = activeEdge
+    ? { line: activeEdge.relation.line, from: activeEdge.relation.from, to: activeEdge.relation.to }
+    : null;
+
+  const onEdgeDown = (relation: Relation, e: React.PointerEvent<SVGGElement>) => {
+    e.stopPropagation();
+    setSelected(null);
+    setSelectedEdge(relation.line);
+  };
+
+  // Raccourcis du sélecteur : 1–7 type, R inverser, Suppr supprimer, Échap fermer.
+  useEffect(() => {
+    if (!activeRef) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) return; // ne pas voler la frappe de l'éditeur
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= RELATION_CHOICES.length) onRelationChange(activeRef, { kind: RELATION_CHOICES[n - 1].kind });
+      else if (e.key === 'r' || e.key === 'R') onRelationChange(activeRef, { reverse: true });
+      else if (e.key === 'Delete' || e.key === 'Backspace') {
+        onRelationDelete(activeRef);
+        setSelectedEdge(null);
+      } else if (e.key === 'Escape') setSelectedEdge(null);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeRef?.line, activeRef?.from, activeRef?.to, onRelationChange, onRelationDelete]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Coordonnées écran → coordonnées « monde » (avant pan/zoom). */
   const toWorld = (clientX: number, clientY: number): Point => {
@@ -101,11 +140,13 @@ export function Canvas({ diagram, positions, theme, onMove }: Props) {
     const b = boxes[name];
     drag.current = { type: 'box', name, dx: w.x - b.x, dy: w.y - b.y };
     setSelected(name);
+    setSelectedEdge(null);
     svgRef.current?.setPointerCapture(e.pointerId);
   };
 
   const onBackgroundDown = (e: PointerEvent<SVGSVGElement>) => {
     setSelected(null);
+    setSelectedEdge(null);
     drag.current = { type: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y };
     setPanning(true);
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -152,9 +193,34 @@ export function Canvas({ diagram, positions, theme, onMove }: Props) {
         <rect width="100%" height="100%" fill="url(#xuml-grid)" />
 
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-          <DiagramScene diagram={diagram} boxes={boxes} theme={theme} selected={selected} onBoxPointerDown={onBoxDown} />
+          <DiagramScene
+            diagram={diagram}
+            boxes={boxes}
+            theme={theme}
+            selected={selected}
+            selectedEdge={selectedEdge}
+            onBoxPointerDown={onBoxDown}
+            onEdgePointerDown={onEdgeDown}
+          />
         </g>
       </svg>
+
+      {activeEdge && activeRef && (
+        <RelationPicker
+          x={activeEdge.label.x * view.k + view.x}
+          y={activeEdge.label.y * view.k + view.y}
+          from={activeRef.from}
+          to={activeRef.to}
+          current={activeEdge.relation.kind}
+          onPick={(kind) => onRelationChange(activeRef, { kind })}
+          onReverse={() => onRelationChange(activeRef, { reverse: true })}
+          onDelete={() => {
+            onRelationDelete(activeRef);
+            setSelectedEdge(null);
+          }}
+          onClose={() => setSelectedEdge(null)}
+        />
+      )}
 
       {isEmpty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm" style={{ color: theme.muted }}>
@@ -177,7 +243,7 @@ export function Canvas({ diagram, positions, theme, onMove }: Props) {
       </div>
 
       <p className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] sm:block" style={{ color: theme.muted }}>
-        Glisser : déplacer · Molette : zoom · Alt : sans aimantation
+        Glisser : déplacer · Clic sur un lien : changer la flèche · Molette : zoom · Alt : sans aimantation
       </p>
     </div>
   );

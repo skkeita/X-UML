@@ -3,6 +3,7 @@ import { Canvas } from './components/Canvas';
 import { CodeEditor } from './components/CodeEditor';
 import { SplitPane } from './components/SplitPane';
 import { Toolbar } from './components/Toolbar';
+import { deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { computeBoxes, layoutNewClasses } from './core/layout';
 import { parse } from './core/parser';
 import { SAMPLE_SOURCE } from './core/sample';
@@ -39,6 +40,14 @@ export default function App() {
     (name: string, p: Point) => setStored((s) => ({ ...s, ...positions, [name]: p })),
     [positions],
   );
+
+  // Édition depuis le canevas : on réécrit la ligne du script (le texte reste la source de vérité,
+  // et Ctrl+Z dans l'éditeur reste cohérent avec ce qui est affiché).
+  const handleRelationChange = useCallback(
+    (ref: RelationRef, change: RelationChange) => setSource((s) => updateRelation(s, ref, change)),
+    [],
+  );
+  const handleRelationDelete = useCallback((ref: RelationRef) => setSource((s) => deleteRelation(s, ref)), []);
 
   // 4) Persistance locale automatique.
   const project = useMemo<ProjectData>(() => ({ version: 1, source, positions }), [source, positions]);
@@ -109,7 +118,16 @@ export default function App() {
       <SplitPane
         leftOpen={editorOpen}
         left={editorPanel}
-        right={<Canvas diagram={diagram} positions={positions} theme={sceneTheme(theme)} onMove={handleMove} />}
+        right={
+          <Canvas
+            diagram={diagram}
+            positions={positions}
+            theme={sceneTheme(theme)}
+            onMove={handleMove}
+            onRelationChange={handleRelationChange}
+            onRelationDelete={handleRelationDelete}
+          />
+        }
       />
     </div>
   );

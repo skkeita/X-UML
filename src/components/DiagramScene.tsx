@@ -10,7 +10,7 @@ import {
   splitMembers,
 } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
-import type { ClassNode, Diagram, Rect, RelationKind } from '../core/types';
+import type { ClassNode, Diagram, Rect, Relation, RelationKind } from '../core/types';
 
 /*
  * Moteur de rendu SVG pur : aucune dépendance au DOM ni à l'état.
@@ -23,7 +23,10 @@ interface Props {
   boxes: Record<string, Rect>;
   theme: SceneTheme;
   selected?: string | null;
+  /** Ligne source de la relation sélectionnée (identifiant stable d'un lien). */
+  selectedEdge?: number | null;
   onBoxPointerDown?: (name: string, e: ReactPointerEvent<SVGGElement>) => void;
+  onEdgePointerDown?: (relation: Relation, e: ReactPointerEvent<SVGGElement>) => void;
 }
 
 const DASHED: RelationKind[] = ['realization', 'dependency'];
@@ -112,7 +115,7 @@ function ClassBox({
   );
 }
 
-export function DiagramScene({ diagram, boxes, theme, selected, onBoxPointerDown }: Props) {
+export function DiagramScene({ diagram, boxes, theme, selected, selectedEdge, onBoxPointerDown, onEdgePointerDown }: Props) {
   const edges = computeEdges(diagram.relations, boxes);
 
   return (
@@ -136,9 +139,25 @@ export function DiagramScene({ diagram, boxes, theme, selected, onBoxPointerDown
       <g fill="none" stroke={theme.edge} strokeWidth={1.4}>
         {edges.map(({ relation, d, label }, i) => {
           const m = markerFor(relation.kind);
+          const isSelected = selectedEdge === relation.line;
           return (
-            <g key={i}>
-              <path d={d} strokeDasharray={DASHED.includes(relation.kind) ? '6 4' : undefined} markerStart={m.start} markerEnd={m.end} />
+            <g
+              key={i}
+              onPointerDown={onEdgePointerDown ? (e) => onEdgePointerDown(relation, e) : undefined}
+              style={{ cursor: onEdgePointerDown ? 'pointer' : undefined }}
+              data-relation={relation.line}
+            >
+              {/* Zone de clic invisible de 14 px : un trait de 1,4 px est presque impossible à viser */}
+              {onEdgePointerDown && <path d={d} stroke="transparent" strokeWidth={14} pointerEvents="stroke" />}
+              {isSelected && <path d={d} stroke={theme.accent} strokeOpacity={0.25} strokeWidth={8} strokeLinecap="round" />}
+              <path
+                d={d}
+                stroke={isSelected ? theme.accent : undefined}
+                strokeWidth={isSelected ? 2 : undefined}
+                strokeDasharray={DASHED.includes(relation.kind) ? '6 4' : undefined}
+                markerStart={m.start}
+                markerEnd={m.end}
+              />
               {relation.label && (
                 <text
                   x={label.x}
