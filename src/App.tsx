@@ -211,7 +211,18 @@ export default function App() {
     [editSource],
   );
   const handleRelationDelete = useCallback((ref: RelationRef) => editSource((src) => deleteRelation(src, ref)), [editSource]);
-  const handleDeleteNodes = useCallback((names: string[]) => editSource((src) => deleteNodes(src, names)), [editSource]);
+  /**
+   * Supprime seulement les éléments visés : les autres gardent exactement leur place
+   * (leurs positions actuelles sont figées, même celles calculées automatiquement).
+   */
+  const handleDeleteNodes = useCallback(
+    (names: string[]) => {
+      const gone = new Set(names);
+      const kept = Object.fromEntries(Object.entries(positions).filter(([n]) => !gone.has(n)));
+      history.push(onActive((b) => ({ ...b, source: deleteNodes(b.source, names), positions: { ...kept } })));
+    },
+    [positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   /** Duplique la sélection : copies décalées en diagonale (on voit tout de suite qu'il y en a deux), puis sélectionnées. */
   const handleDuplicate = useCallback(
     (names: string[]): string[] => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { updateRelation } from './edit';
+import { deleteNodes, updateRelation } from './edit';
 import { parse } from './parser';
 
 describe('tableau blanc : éléments UML', () => {
@@ -133,5 +133,35 @@ describe('modèles d’exemple', () => {
       const inside = b.x < sys.x + sys.w && b.x + b.w > sys.x && b.y < sys.y + sys.h && b.y + b.h > sys.y;
       expect(inside, actor).toBe(false);
     }
+  });
+});
+
+describe('supprimer un seul élément', () => {
+  it('ne fait disparaître aucun voisin', () => {
+    const cases: [string, string[]][] = [
+      ['class Client\nClient --> Commande : passe', ['Client']],
+      ['system S "Sys" : U1, U2\nactor C\nC -- U1', ['S']],
+      ['actor C\nC -- U1\ncolor C, U1 bleu "x"', ['C']],
+      ['class A\nclass B extends A\nA --> C\nC --> D', ['A']],
+    ];
+    for (const [src, gone] of cases) {
+      const before = parse(src).diagram.classes.map((c) => c.name).filter((n) => !gone.includes(n));
+      const out = deleteNodes(src, gone);
+      const after = parse(out).diagram.classes.map((c) => c.name);
+      expect(after.sort()).toEqual(before.sort());
+      expect(parse(out).errors).toHaveLength(0);
+    }
+  });
+
+  it('retire l’élément des couleurs et garde la couleur des autres', () => {
+    const out = deleteNodes('actor C\nactor D\ncolor C, D bleu "x"', ['C']);
+    expect(out).toContain('color D bleu "x"');
+    expect(parse(out).diagram.style?.colors).toEqual({ D: '#bfdbfe' });
+  });
+
+  it('les relations des autres éléments restent', () => {
+    const out = deleteNodes('class A\nclass B\nclass C\nA --> B\nB --> C\nA --> C', ['A']);
+    expect(out).toContain('B --> C');
+    expect(parse(out).diagram.relations).toHaveLength(1);
   });
 });

@@ -100,7 +100,7 @@ function lastDeclEnd(lines: string[]): number {
 }
 
 /** Insère des lignes après les déclarations existantes (avant les relations), séparées par une ligne vide. */
-function insertDecl(source: string, block: string[]): string {
+export function insertDecl(source: string, block: string[]): string {
   const trimmed = source.replace(/\s+$/, '');
   if (!trimmed) return `${block.join('\n')}\n`;
   const lines = trimmed.split('\n');

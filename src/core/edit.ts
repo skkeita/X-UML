@@ -1,5 +1,6 @@
 import { formatDecl, parseDecl } from './decl';
-import { OPERATORS, matchRelation } from './parser';
+import { insertDecl } from './modelEdit';
+import { OPERATORS, matchRelation, parse } from './parser';
 import type { DiagramType, RelationKind } from './types';
 
 /*
@@ -348,9 +349,23 @@ export function deleteNodes(source: string, names: string[]): string {
     }
     const rel = matchRelation(trimmed);
     if (rel && (gone.has(rel.from) || gone.has(rel.to))) continue;
+    // Couleurs : on retire seulement les éléments supprimés de la ligne.
+    const color = /^(\s*colou?r\s+)(.+?)(\s+(?:#[0-9a-fA-F]{3,6}|[a-zA-Zé]+)(?:\s+"[^"]*")?\s*)$/u.exec(code);
+    if (color) {
+      const kept = color[2].split(',').map((n) => n.trim()).filter((n) => n && !gone.has(n));
+      if (kept.length) out.push(`${color[1]}${kept.join(', ')}${color[3].trimEnd()}`);
+      continue;
+    }
     out.push(raw);
   }
-  return out.join('\n');
+  // Seul l'élément visé disparaît : un voisin qui n'existait qu'à travers une relation ou un groupe
+  // supprimés reçoit sa propre déclaration (il reste à sa place, avec ses autres relations).
+  const before = parse(source).diagram.classes;
+  let result = out.join('\n');
+  const after = new Set(parse(result).diagram.classes.map((c) => c.name));
+  const orphans = before.filter((c) => !gone.has(c.name) && !after.has(c.name)).map((c) => `class ${c.name}`);
+  if (orphans.length) result = insertDecl(result, orphans);
+  return result;
 }
 
 /**
