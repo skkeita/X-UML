@@ -77,3 +77,67 @@ describe('routage orthogonal', () => {
     for (const e of edges) expect(orthogonal(e.points)).toBe(true);
   });
 });
+
+describe('aucun trait ne traverse une classe', () => {
+  /** Générateur pseudo-aléatoire reproductible. */
+  const rng = (seed: number) => () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+  const interiorHit = (pts: Point[], r: Rect) =>
+    pts.some((p, i) => {
+      if (i === 0) return false;
+      const q = pts[i - 1];
+      return Math.max(p.x, q.x) > r.x + 0.5 && Math.min(p.x, q.x) < r.x + r.w - 0.5 && Math.max(p.y, q.y) > r.y + 0.5 && Math.min(p.y, q.y) < r.y + r.h - 0.5;
+    });
+
+  it('300 dispositions aléatoires : chaque segment évite l’intérieur de toutes les classes', () => {
+    let failures = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      const rand = rng(seed);
+      // Classes posées sur une grille irrégulière, jamais superposées (écart ≥ 12 px).
+      const boxes: Record<string, Rect> = {};
+      const names: string[] = [];
+      const n = 3 + Math.floor(rand() * 6);
+      for (let k = 0; k < n; k++) {
+        const col = k % 3;
+        const row = Math.floor(k / 3);
+        const w = 100 + rand() * 120;
+        const h = 50 + rand() * 90;
+        boxes[`C${k}`] = { x: col * 260 + rand() * 30, y: row * 200 + rand() * 40, w, h };
+        names.push(`C${k}`);
+      }
+      const kinds = ['association', 'inheritance', 'directed', 'composition'] as const;
+      const relations = Array.from({ length: n + 2 }, (_, i) => {
+        const from = names[Math.floor(rand() * n)];
+        let to = names[Math.floor(rand() * n)];
+        if (to === from) to = names[(names.indexOf(from) + 1) % n];
+        return { from, to, kind: kinds[i % kinds.length], line: i + 1 };
+      });
+      for (const e of computeEdges(relations, boxes)) {
+        expect(orthogonal(e.points)).toBe(true);
+        for (const r of Object.values(boxes)) if (interiorHit(e.points, r)) failures++;
+      }
+    }
+    expect(failures).toBe(0);
+  });
+
+  it('une classe posée au milieu d’un lien droit est contournée', () => {
+    const boxes = { A: R(0, 0), B: R(0, 400), M: R(-20, 180, 180, 60) };
+    const [e] = computeEdges([rel('A', 'B')], boxes);
+    expect(interiorHit(e.points, boxes.M)).toBe(false);
+    expect(orthogonal(e.points)).toBe(true);
+  });
+});
+
+describe('classes jamais superposées', () => {
+  it('une classe lâchée sur une autre est décalée vers la place libre la plus proche', async () => {
+    const { resolveOverlap, MIN_GAP } = await import('./layout');
+    const other = R(100, 100, 200, 100);
+    const p = resolveOverlap({ x: 150, y: 120 }, { w: 140, h: 80 }, [other]);
+    const clash = p.x < other.x + other.w + MIN_GAP && p.x + 140 + MIN_GAP > other.x && p.y < other.y + other.h + MIN_GAP && p.y + 80 + MIN_GAP > other.y;
+    expect(clash).toBe(false);
+    // Position déjà libre : inchangée
+    expect(resolveOverlap({ x: 600, y: 600 }, { w: 140, h: 80 }, [other])).toEqual({ x: 600, y: 600 });
+  });
+});

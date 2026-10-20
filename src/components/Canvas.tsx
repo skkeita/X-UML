@@ -16,6 +16,8 @@ interface Props {
   onRelationChange: (ref: RelationRef, change: RelationChange) => void;
   onRelationDelete: (ref: RelationRef) => void;
   onRelationAdd: (from: string, to: string, kind: RelationKind) => void;
+  /** Fin d'un glisser de classe : l'application corrige un éventuel chevauchement. */
+  onDrop?: (name: string) => void;
   /** Prévient l'application de la classe cliquée (null : clic dans le vide). */
   onSelectClass?: (name: string | null) => void;
   /** Vue ciblée active sur cette classe : les autres sont estompées. */
@@ -58,6 +60,7 @@ export function Canvas({
   onRelationDelete,
   onRelationAdd,
   onSelectClass,
+  onDrop,
   focus,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -269,6 +272,7 @@ export function Canvas({
 
   const onPointerUp = (e: PointerEvent<SVGSVGElement>) => {
     const d = drag.current;
+    if (d?.type === 'box' && d.moved) onDrop?.(d.name);
     if (d?.type === 'link') {
       const w = toWorld(e.clientX, e.clientY);
       if (d.moved) {
@@ -336,6 +340,7 @@ export function Canvas({
             selectedEdge={selectedEdge}
             highlighted={highlighted}
             focus={focus}
+            edges={edges}
             onBoxPointerDown={onBoxDown}
             onEdgePointerDown={onEdgeDown}
             onHandlePointerDown={onHandleDown}

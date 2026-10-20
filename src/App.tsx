@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Canvas } from './components/Canvas';
 import { CodeEditor } from './components/CodeEditor';
 import { EditorModeBar, FocusPlaceholder, type EditorMode } from './components/EditorModeBar';
+import { RelationsPanel } from './components/RelationsPanel';
 import { SplitPane } from './components/SplitPane';
 import { Toolbar } from './components/Toolbar';
 import { addRelation, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
-import { applyFocusEdit, focusLines, focusText } from './core/focus';
-import { computeBoxes, layoutNewClasses } from './core/layout';
+import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
+import { computeBoxes, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
 import { SAMPLE_SOURCE } from './core/sample';
 import { sceneTheme } from './core/theme';
@@ -58,8 +59,8 @@ export default function App() {
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   /** Classe affichée en mode « une classe » : reste affichée tant qu'on n'en clique pas une autre. */
   const [focusName, setFocusName] = useState<string | null>(null);
-  /** Lignes de la vue ciblée, mémorisées pendant la frappe (une ligne pas encore valide ne doit pas disparaître). */
-  const [focusMemo, setFocusMemo] = useState<{ name: string; source: string; lines: number[] } | null>(null);
+  /** Lignes affichées dans l'éditeur, mémorisées pendant la frappe (une ligne pas encore valide ne doit pas disparaître). */
+  const [viewMemo, setViewMemo] = useState<{ key: string; source: string; lines: number[] } | null>(null);
   const [reveal, setReveal] = useState<number | null>(null);
 
   // 1) Parsing temps réel avec anti-rebond : la frappe reste fluide, le rendu suit ~150 ms après.
@@ -77,7 +78,6 @@ export default function App() {
 
   // --- Actions (toutes passent par l'historique) -------------------------------------------
 
-  const setSourceTyped = useCallback((v: string) => history.type((s) => ({ ...s, source: v })), [history.type]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Un glisser = une seule étape d'annulation : 'push' au premier mouvement, 'merge' ensuite. */
   const handleMove = useCallback(
@@ -87,6 +87,21 @@ export default function App() {
       else history.merge(apply);
     },
     [positions, history.push, history.merge], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  /** Au lâcher : une classe posée sur une autre glisse vers la place libre la plus proche (même étape d'annulation). */
+  const handleDrop = useCallback(
+    (name: string) => {
+      const node = diagram.classes.find((c) => c.name === name);
+      const p = positions[name];
+      if (!node || !p) return;
+      const others = diagram.classes
+        .filter((c) => c.name !== name && positions[c.name])
+        .map((c) => ({ ...positions[c.name], ...measureClass(c) }));
+      const free = resolveOverlap(p, measureClass(node), others);
+      if (free.x !== p.x || free.y !== p.y) history.merge((s) => ({ ...s, positions: { ...s.positions, [name]: free } }));
+    },
+    [diagram, positions, history.merge], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Édition depuis le canevas : on réécrit le script (le texte reste la source de vérité).
@@ -110,35 +125,46 @@ export default function App() {
       setSelectedClass(name);
       if (!name) return;
       setFocusName(name);
-      const first = focusLines(source, name)[0];
+      const first = focusLines(source, name, false)[0];
       setReveal(first === undefined ? null : first + 1);
     },
     [source],
   );
 
+  // L'éditeur montre le code des classes, jamais les liaisons (elles ont leur propre panneau).
+  const viewKey = editorMode === 'all' ? 'all' : `class:${focusName ?? ''}`;
   const viewLines = useMemo(() => {
-    if (!focusName) return [];
-    if (focusMemo && focusMemo.name === focusName && focusMemo.source === source) return focusMemo.lines;
-    return focusLines(source, focusName);
-  }, [focusName, focusMemo, source]);
+    if (viewMemo && viewMemo.key === viewKey && viewMemo.source === source) return viewMemo.lines;
+    if (editorMode === 'all') return codeLines(source);
+    return focusName ? focusLines(source, focusName, false) : [];
+  }, [viewKey, viewMemo, source, editorMode, focusName]);
 
-  const onFocusedChange = useCallback(
+  const onViewChange = useCallback(
     (view: string) => {
-      if (!focusName) return;
       const r = applyFocusEdit(source, viewLines, view);
-      // Renommage de la classe depuis la vue : on suit le nouveau nom.
-      const decl = /^\s*(?:abstract\s+class|class|interface|enum)\s+([\p{L}_][\p{L}\p{N}_]*)/mu.exec(view);
-      const name = decl && decl[1] !== focusName && focusLines(r.source, focusName).length === 0 ? decl[1] : focusName;
-      if (name !== focusName) setFocusName(name);
-      setFocusMemo({ name, source: r.source, lines: r.lines });
+      let key = viewKey;
+      if (editorMode === 'class' && focusName) {
+        // Renommage de la classe depuis la vue : on suit le nouveau nom.
+        const decl = /^\s*(?:abstract\s+class|class|interface|enum)\s+([\p{L}_][\p{L}\p{N}_]*)/mu.exec(view);
+        const name = decl && decl[1] !== focusName && focusLines(r.source, focusName, false).length === 0 ? decl[1] : focusName;
+        if (name !== focusName) setFocusName(name);
+        key = `class:${name}`;
+      }
+      setViewMemo({ key, source: r.source, lines: r.lines });
       history.type((s) => ({ ...s, source: r.source }));
     },
-    [focusName, source, viewLines, history.type], // eslint-disable-line react-hooks/exhaustive-deps
+    [source, viewLines, viewKey, editorMode, focusName, history.type], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const highlightLines = useMemo(
-    () => (editorMode === 'all' && selectedClass ? new Set(focusLines(source, selectedClass).map((i) => i + 1)) : undefined),
+    () => (editorMode === 'all' && selectedClass ? new Set(focusLines(source, selectedClass, false).map((i) => i + 1)) : undefined),
     [editorMode, selectedClass, source],
+  );
+
+  /** Classe connue seulement par ses liaisons : on propose de la déclarer. */
+  const declareClass = useCallback(
+    (name: string) => editSource((src) => `${src.replace(/\s+$/, '')}\n\nclass ${name} {\n}\n`),
+    [editSource],
   );
 
   // 4) Persistance locale automatique.
@@ -171,6 +197,8 @@ export default function App() {
   const hasErrors = result.errors.length > 0;
 
   const focusActive = editorMode === 'class' && !!focusName && viewLines.length > 0;
+  const classNames = useMemo(() => diagram.classes.map((c) => c.name), [diagram]);
+  const implicitFocus = editorMode === 'class' && focusName && !focusActive && classNames.includes(focusName) ? focusName : null;
 
   const editorPanel = (
     <div className="flex h-full min-h-0 flex-col">
@@ -179,31 +207,37 @@ export default function App() {
         onModeChange={setEditorMode}
         focusName={editorMode === 'class' && viewLines.length > 0 ? focusName : null}
         lineCount={viewLines.length}
-        totalLines={source.split('\n').length}
+        totalLines={codeLines(source).length}
       />
       <div className="min-h-0 flex-1">
-        {editorMode === 'all' ? (
+        {editorMode === 'all' || focusActive ? (
           <CodeEditor
-            key="all"
-            value={source}
-            onChange={setSourceTyped}
-            errors={result.errors}
-            highlightLines={highlightLines}
-            revealLine={reveal}
-          />
-        ) : focusActive ? (
-          <CodeEditor
-            key="class"
+            key={editorMode}
             value={focusText(source, viewLines)}
-            onChange={onFocusedChange}
+            onChange={onViewChange}
             errors={result.errors}
             lineNumbers={viewLines.map((i) => i + 1)}
-            placeholder={`class ${focusName} { … }`}
+            highlightLines={highlightLines}
+            revealLine={editorMode === 'all' ? reveal : null}
+            placeholder={editorMode === 'all' ? 'class Animal { + nom: string }' : `class ${focusName} { … }`}
           />
         ) : (
-          <FocusPlaceholder missing={focusName} onShowAll={() => setEditorMode('all')} />
+          <FocusPlaceholder
+            missing={implicitFocus ? null : focusName}
+            implicit={implicitFocus}
+            onDeclare={declareClass}
+            onShowAll={() => setEditorMode('all')}
+          />
         )}
       </div>
+      <RelationsPanel
+        relations={diagram.relations}
+        classNames={classNames}
+        filter={editorMode === 'class' ? focusName : null}
+        onChange={handleRelationChange}
+        onDelete={handleRelationDelete}
+        onAdd={handleRelationAdd}
+      />
       <footer
         className={`shrink-0 border-t px-3 py-2 text-xs ${
           hasErrors
@@ -258,6 +292,7 @@ export default function App() {
             onRelationDelete={handleRelationDelete}
             onRelationAdd={handleRelationAdd}
             onSelectClass={handleSelectClass}
+            onDrop={handleDrop}
             focus={focusActive ? focusName : null}
           />
         }

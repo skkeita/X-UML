@@ -5,6 +5,7 @@ import {
   ROW_H,
   compartmentHeight,
   computeEdges,
+  type EdgeGeometry,
   headerHeight,
   memberLabel,
   splitMembers,
@@ -27,6 +28,8 @@ interface Props {
   selectedEdge?: number | null;
   onBoxPointerDown?: (name: string, e: ReactPointerEvent<SVGGElement>) => void;
   onEdgePointerDown?: (relation: Relation, e: ReactPointerEvent<SVGGElement>) => void;
+  /** Géométrie déjà calculée par l'appelant (le routage est coûteux : on évite de le refaire). */
+  edges?: EdgeGeometry[];
   /** Vue ciblée : la classe et ses voisines restent nettes, le reste est estompé. */
   focus?: string | null;
   /** Classe mise en évidence comme cible pendant la création d'un lien. */
@@ -162,11 +165,12 @@ export function DiagramScene({
   selectedEdge,
   highlighted,
   focus,
+  edges: precomputed,
   onBoxPointerDown,
   onEdgePointerDown,
   onHandlePointerDown,
 }: Props) {
-  const edges = computeEdges(diagram.relations, boxes);
+  const edges = precomputed ?? computeEdges(diagram.relations, boxes);
   const focusOn = focus && boxes[focus] ? focus : null;
   const neighbours = new Set<string>();
   if (focusOn) {

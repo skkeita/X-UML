@@ -1,7 +1,10 @@
 import { RELATION } from './parser';
 
 /*
- * Vue « une seule classe » de l'éditeur.
+ * Vues partielles de l'éditeur de code.
+ *
+ * Les liaisons sont gérées dans un panneau dédié : l'éditeur n'affiche donc que le code
+ * des classes (codeLines), ou celui d'une seule classe (focusLines sans ses liaisons).
  *
  * On affiche uniquement les lignes qui concernent une classe : son bloc de déclaration
  * et les relations où elle apparaît. Ces lignes peuvent être éloignées dans le script ;
@@ -15,8 +18,37 @@ const DECL = /^(?:abstract\s+class|class|interface|enum)\s+([\p{L}_][\p{L}\p{N}_
 
 const code = (line: string) => line.replace(/\/\/.*$/, '').trim();
 
-/** Indices (base 0, croissants) des lignes du script qui concernent la classe `name`. */
-export function focusLines(source: string, name: string): number[] {
+/** Vrai si la ligne (hors bloc de classe) est une liaison. */
+const isRelation = (c: string) => RELATION.test(c);
+
+/** Indices (base 0, croissants) de toutes les lignes du script SAUF les liaisons. */
+export function codeLines(source: string): number[] {
+  const lines = source.split('\n');
+  const out: number[] = [];
+  let inBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    const c = code(lines[i]);
+    if (inBlock) {
+      out.push(i);
+      if (c === '}') inBlock = false;
+      continue;
+    }
+    const decl = DECL.exec(c);
+    if (decl) {
+      inBlock = c.includes('{') && !c.endsWith('}');
+      out.push(i);
+      continue;
+    }
+    if (!isRelation(c)) out.push(i);
+  }
+  return out;
+}
+
+/**
+ * Indices (base 0, croissants) des lignes du script qui concernent la classe `name` :
+ * son bloc de déclaration, et ses liaisons si `withRelations`.
+ */
+export function focusLines(source: string, name: string, withRelations = true): number[] {
   const lines = source.split('\n');
   const out: number[] = [];
   let inBlock = false;
@@ -42,6 +74,7 @@ export function focusLines(source: string, name: string): number[] {
       inBlock = opens;
       continue;
     }
+    if (!withRelations) continue;
     const rel = RELATION.exec(c);
     if (rel && (rel[1] === name || rel[3] === name)) out.push(i);
   }

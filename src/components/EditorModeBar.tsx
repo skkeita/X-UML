@@ -34,14 +34,14 @@ export function EditorModeBar({ mode, onModeChange, focusName, lineCount, totalL
   return (
     <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2 dark:border-slate-800 dark:bg-slate-900">
       <div role="radiogroup" aria-label="Affichage du code" className="flex rounded-lg bg-slate-200/70 p-0.5 dark:bg-slate-800">
-        {option('all', 'Tout le code', 'Afficher le script complet : toutes les classes et toutes les liaisons')}
-        {option('class', 'Une classe', 'N’afficher que le code de la classe cliquée dans le diagramme')}
+        {option('all', 'Toutes les classes', 'Afficher le code de toutes les classes')}
+        {option('class', 'Une classe', 'N’afficher que le code de la classe cliquée dans le diagramme (et ses liaisons en dessous)')}
       </div>
       {mode === 'class' && focusName && (
         <span className="min-w-0 truncate text-xs text-slate-500 dark:text-slate-400" title="Cliquez sur une autre classe du diagramme pour changer">
           <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{focusName}</span>
           <span className="ml-1.5">
-            · {lineCount}/{totalLines} lignes
+            · {lineCount}/{totalLines} lignes de code
           </span>
         </span>
       )}
@@ -50,7 +50,34 @@ export function EditorModeBar({ mode, onModeChange, focusName, lineCount, totalL
 }
 
 /** Message affiché en mode « une classe » tant qu'aucune classe n'est choisie. */
-export function FocusPlaceholder({ missing, onShowAll }: { missing: string | null; onShowAll: () => void }) {
+export function FocusPlaceholder({
+  missing,
+  implicit,
+  onDeclare,
+  onShowAll,
+}: {
+  missing: string | null;
+  /** Classe utilisée dans des liaisons mais jamais déclarée : on propose de la déclarer. */
+  implicit?: string | null;
+  onDeclare?: (name: string) => void;
+  onShowAll: () => void;
+}) {
+  if (implicit) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-sm text-slate-500 dark:text-slate-400">
+        <p>
+          <span className="font-mono text-indigo-600 dark:text-indigo-400">{implicit}</span> apparaît dans des liaisons mais n’a pas encore de code.
+        </p>
+        <button
+          type="button"
+          onClick={() => onDeclare?.(implicit)}
+          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+        >
+          Déclarer la classe {implicit}
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center text-sm text-slate-500 dark:text-slate-400">
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true" className="opacity-60">
@@ -65,10 +92,10 @@ export function FocusPlaceholder({ missing, onShowAll }: { missing: string | nul
             <br />
           </>
         ) : null}
-        Cliquez sur une classe dans le diagramme pour n’afficher que son code et ses liaisons.
+        Cliquez sur une classe dans le diagramme pour n’afficher que son code.
       </p>
       <button type="button" onClick={onShowAll} className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-        Afficher tout le code
+        Afficher toutes les classes
       </button>
     </div>
   );

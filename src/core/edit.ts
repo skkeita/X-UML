@@ -32,6 +32,11 @@ export interface RelationRef {
 export interface RelationChange {
   kind?: RelationKind;
   reverse?: boolean;
+  /** Nouvelle classe source / cible (panneau Liaisons). */
+  from?: string;
+  to?: string;
+  /** Nouveau libellé ; chaîne vide = supprimer le libellé. */
+  label?: string;
 }
 
 interface ParsedLine {
@@ -83,8 +88,11 @@ export function updateRelation(source: string, ref: RelationRef, change: Relatio
   const p = locate(source, ref);
   if (!p) return source;
   const kind = change.kind ?? p.kind;
-  const [a, b] = change.reverse ? [p.to, p.from] : [p.from, p.to];
-  const label = p.label ? ` : ${p.label}` : '';
+  const from = change.from ?? p.from;
+  const to = change.to ?? p.to;
+  const [a, b] = change.reverse ? [to, from] : [from, to];
+  const text = change.label !== undefined ? change.label.trim() : p.label;
+  const label = text ? ` : ${text}` : '';
   const comment = p.comment ? ` ${p.comment}` : '';
   p.lines[p.idx] = `${p.indent}${a} ${SYMBOL[kind]} ${b}${label}${comment}${p.eol}`;
   return p.lines.join('\n');

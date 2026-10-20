@@ -169,3 +169,40 @@ export function layoutNewClasses(diagram: Diagram, known: Positions): Positions 
 /* ------------------------------------------------------------------ */
 
 export { computeEdges, type EdgeGeometry } from './routing';
+
+/* ------------------------------------------------------------------ */
+/* Classes jamais superposées                                          */
+/* ------------------------------------------------------------------ */
+
+/** Espace minimal entre deux classes : assez pour qu'un trait passe entre elles sans les toucher. */
+export const MIN_GAP = 40;
+
+/**
+ * Si la classe lâchée chevauche (ou frôle) une autre classe, renvoie la position libre la plus proche,
+ * cherchée en anneaux successifs sur la grille. Sinon renvoie la position telle quelle.
+ * UX : deux classes empilées masqueraient forcément des traits ; on l'empêche au lâcher,
+ * sans gêner le glisser lui-même.
+ */
+export function resolveOverlap(p: Point, size: Size, others: Rect[], gap = MIN_GAP): Point {
+  const clash = (q: Point) =>
+    others.some((r) => q.x < r.x + r.w + gap && q.x + size.w + gap > r.x && q.y < r.y + r.h + gap && q.y + size.h + gap > r.y);
+  if (!clash(p)) return p;
+  for (let ring = 1; ring <= 80; ring++) {
+    let best: Point | null = null;
+    let bestD = Infinity;
+    for (let dx = -ring; dx <= ring; dx++) {
+      for (let dy = -ring; dy <= ring; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue; // seulement le bord de l'anneau
+        const q = { x: p.x + dx * GRID, y: p.y + dy * GRID };
+        if (clash(q)) continue;
+        const d = Math.hypot(dx, dy);
+        if (d < bestD) {
+          bestD = d;
+          best = q;
+        }
+      }
+    }
+    if (best) return best;
+  }
+  return p;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFocusEdit, focusLines, focusText } from './focus';
+import { applyFocusEdit, codeLines, focusLines, focusText } from './focus';
 import { parse } from './parser';
 import { SAMPLE_SOURCE } from './sample';
 
@@ -78,5 +78,19 @@ describe('vue ciblée sur une classe', () => {
     expect(text).toContain('Chien --|> Animal');
     expect(text).toContain('Chien ..|> Domestique');
     expect(text).not.toContain('Chat');
+  });
+
+  it('le code sans liaisons : uniquement les déclarations', () => {
+    expect(codeLines(SRC)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(focusLines(SRC, 'A', false)).toEqual([0, 1, 2]);
+    expect(focusLines(SRC, 'C', false)).toEqual([]);
+  });
+
+  it('modifier le code sans liaisons ne touche pas aux liaisons', () => {
+    const lines = codeLines(SRC);
+    const view = focusText(SRC, lines).replace('class B {', 'class B {\n  + z: int');
+    const r = applyFocusEdit(SRC, lines, view);
+    expect(r.source.split('\n').slice(-3)).toEqual(['A -- B', 'B --|> C', 'C ..> A : utilise']);
+    expect(parse(r.source).errors).toEqual([]);
   });
 });

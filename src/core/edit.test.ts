@@ -22,6 +22,12 @@ describe('édition des relations depuis le canevas', () => {
     expect(out.split('\n')[1]).toBe('  Animal --> Chien : adopte // note');
   });
 
+  it('change la source, la cible et le libellé', () => {
+    const out = updateRelation(SRC, REF, { from: 'Chat', to: 'Maison', label: 'habite' });
+    expect(out.split('\n')[1]).toBe('  Chat --> Maison : habite // note');
+    expect(updateRelation(SRC, REF, { label: '' }).split('\n')[1]).toBe('  Chien --> Animal // note');
+  });
+
   it('supprime la ligne', () => {
     expect(deleteRelation(SRC, REF)).toBe('class A\nB -- C');
   });
