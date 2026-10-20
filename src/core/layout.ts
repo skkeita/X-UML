@@ -1,4 +1,4 @@
-import type { ClassNode, Diagram, Member, Point, Positions, Rect, Relation, Size } from './types';
+import type { ClassNode, Diagram, Member, Point, Positions, Rect, Size } from './types';
 
 /* ------------------------------------------------------------------ */
 /* Mesure des boîtes (déterministe, sans mesurer le DOM)               */
@@ -165,79 +165,7 @@ export function layoutNewClasses(diagram: Diagram, known: Positions): Positions 
 }
 
 /* ------------------------------------------------------------------ */
-/* Géométrie des liens                                                 */
+/* Géométrie des liens : voir routing.ts (routage orthogonal)          */
 /* ------------------------------------------------------------------ */
 
-export interface EdgeGeometry {
-  relation: Relation;
-  d: string;
-  label: Point;
-}
-
-const center = (r: Rect): Point => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
-
-/** Point où le segment [p0 → p1] sort du rectangle (p0 est à l'intérieur ou proche du centre). */
-function exitPoint(r: Rect, p0: Point, p1: Point): Point {
-  const dx = p1.x - p0.x;
-  const dy = p1.y - p0.y;
-  const tx = dx === 0 ? Infinity : ((dx > 0 ? r.x + r.w : r.x) - p0.x) / dx;
-  const ty = dy === 0 ? Infinity : ((dy > 0 ? r.y + r.h : r.y) - p0.y) / dy;
-  const t = Math.min(tx, ty);
-  if (!Number.isFinite(t) || t < 0) return p0;
-  return { x: p0.x + dx * t, y: p0.y + dy * t };
-}
-
-/**
- * Lie les boîtes par des segments droits ancrés sur leurs bords.
- * Anti-chevauchement : plusieurs liens entre la même paire de classes sont décalés
- * en parallèle ; les liens réflexifs (A -- A) font une boucle sur le côté droit.
- */
-export function computeEdges(relations: Relation[], boxes: Record<string, Rect>): EdgeGeometry[] {
-  const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
-  const totals = new Map<string, number>();
-  for (const r of relations) totals.set(key(r.from, r.to), (totals.get(key(r.from, r.to)) ?? 0) + 1);
-  const seen = new Map<string, number>();
-
-  const edges: EdgeGeometry[] = [];
-  for (const r of relations) {
-    const a = boxes[r.from];
-    const b = boxes[r.to];
-    if (!a || !b) continue;
-
-    if (r.from === r.to) {
-      const x = a.x + a.w;
-      const y = a.y + 18;
-      edges.push({
-        relation: r,
-        d: `M ${x} ${y} L ${x + 36} ${y} L ${x + 36} ${y + 30} L ${x} ${y + 30}`,
-        label: { x: x + 42, y: y + 18 },
-      });
-      continue;
-    }
-
-    const k = key(r.from, r.to);
-    const idx = seen.get(k) ?? 0;
-    seen.set(k, idx + 1);
-    const n = totals.get(k) ?? 1;
-    // Décalage perpendiculaire, signe stabilisé quel que soit le sens de la relation.
-    const sign = r.from < r.to ? 1 : -1;
-    const offset = (idx - (n - 1) / 2) * 18 * sign;
-
-    const ca = center(a);
-    const cb = center(b);
-    const len = Math.hypot(cb.x - ca.x, cb.y - ca.y) || 1;
-    const ox = (-(cb.y - ca.y) / len) * offset;
-    const oy = ((cb.x - ca.x) / len) * offset;
-    const pa0 = { x: ca.x + ox, y: ca.y + oy };
-    const pb0 = { x: cb.x + ox, y: cb.y + oy };
-
-    const start = exitPoint(a, pa0, pb0);
-    const end = exitPoint(b, pb0, pa0);
-    edges.push({
-      relation: r,
-      d: `M ${start.x} ${start.y} L ${end.x} ${end.y}`,
-      label: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 6 },
-    });
-  }
-  return edges;
-}
+export { computeEdges, type EdgeGeometry } from './routing';
