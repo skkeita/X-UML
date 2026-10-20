@@ -28,6 +28,12 @@ export const UploadIcon = () => (
     <path d="M12 15V3M7 8l5-5 5 5M4 20h16" />
   </Svg>
 );
+export const PdfIcon = () => (
+  <Svg>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5M9 13h6M9 17h4" />
+  </Svg>
+);
 export const ImageIcon = () => (
   <Svg>
     <rect x="3" y="3" width="18" height="18" rx="2" />

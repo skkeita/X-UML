@@ -172,3 +172,73 @@ describe('pas de marche aux extrémités d’un contournement', () => {
     }
   });
 });
+
+describe('pointes de flèche toujours dégagées', () => {
+  const rng = (seed: number) => () => {
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
+  };
+  /** Zone de 20 × 16 px devant chaque extrémité (là où la pointe est dessinée). */
+  const tipZone = (pts: Point[], end: 'start' | 'end') => {
+    const [p0, p1] = end === 'start' ? [pts[0], pts[1]] : [pts[pts.length - 1], pts[pts.length - 2]];
+    const len = Math.abs(p1.x - p0.x) + Math.abs(p1.y - p0.y) || 1;
+    const k = Math.min(20, len) / len;
+    const far = { x: p0.x + (p1.x - p0.x) * k, y: p0.y + (p1.y - p0.y) * k };
+    const h = Math.abs(p0.y - p1.y) < 0.01;
+    return h
+      ? { x0: Math.min(p0.x, far.x), x1: Math.max(p0.x, far.x), y0: p0.y - 8, y1: p0.y + 8, port: p0 }
+      : { x0: p0.x - 8, x1: p0.x + 8, y0: Math.min(p0.y, far.y), y1: Math.max(p0.y, far.y), port: p0 };
+  };
+
+  it('300 dispositions aléatoires : aucun trait ne passe sur la pointe d’un autre lien', () => {
+    let hits = 0;
+    let total = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      const rand = rng(seed * 7 + 3);
+      const boxes: Record<string, Rect> = {};
+      const names: string[] = [];
+      const n = 3 + Math.floor(rand() * 5);
+      for (let k = 0; k < n; k++) {
+        boxes[`C${k}`] = { x: (k % 3) * 300 + rand() * 30, y: Math.floor(k / 3) * 240 + rand() * 40, w: 110 + rand() * 100, h: 60 + rand() * 70 };
+        names.push(`C${k}`);
+      }
+      const kinds = ['association', 'inheritance', 'directed', 'dependency'] as const;
+      const relations = Array.from({ length: n + 1 }, (_, i) => {
+        const from = names[Math.floor(rand() * n)];
+        let to = names[Math.floor(rand() * n)];
+        if (to === from) to = names[(names.indexOf(from) + 1) % n];
+        return { from, to, kind: kinds[i % kinds.length], line: i + 1 };
+      });
+      const edges = computeEdges(relations, boxes);
+      edges.forEach((e, i) => {
+        edges.forEach((o, j) => {
+          if (i === j) return;
+          for (const end of ['start', 'end'] as const) {
+            const z = tipZone(o.points, end);
+            if ([e.points[0], e.points[e.points.length - 1]].some((p) => Math.abs(p.x - z.port.x) < 1 && Math.abs(p.y - z.port.y) < 1)) continue;
+            total++;
+            if (e.points.some((p, k) => k > 0 && Math.max(p.x, e.points[k - 1].x) > z.x0 && Math.min(p.x, e.points[k - 1].x) < z.x1 && Math.max(p.y, e.points[k - 1].y) > z.y0 && Math.min(p.y, e.points[k - 1].y) < z.y1)) hits++;
+          }
+        });
+      });
+    }
+    expect(total).toBeGreaterThan(1000);
+    expect(hits).toBe(0);
+  });
+});
+
+describe('deux liens différents n’arrivent jamais au même point', () => {
+  it('une association ne rejoint pas le point d’arrivée d’un héritage (on croirait voir un triangle)', () => {
+    // Personne doit contourner : la sortie naturelle tomberait sur le point de l'héritage Chien → Animal.
+    const boxes = { Animal: R(0, 0, 160, 160), Chien: R(200, 260, 160, 100), Personne: R(400, 380, 220, 100) };
+    const edges = computeEdges(
+      [
+        { from: 'Chien', to: 'Animal', kind: 'inheritance', line: 1 },
+        { from: 'Personne', to: 'Animal', kind: 'directed', line: 2 },
+      ],
+      boxes,
+    );
+    const end = (i: number) => edges[i].points[edges[i].points.length - 1];
+    expect(Math.abs(end(0).x - end(1).x) + Math.abs(end(0).y - end(1).y)).toBeGreaterThan(15);
+  });
+});

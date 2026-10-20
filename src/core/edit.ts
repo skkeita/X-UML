@@ -100,6 +100,12 @@ export function updateRelation(source: string, ref: RelationRef, change: Relatio
   const to = change.to ?? p.to;
   const [a, b] = change.reverse ? [to, from] : [from, to];
   const text = change.label !== undefined ? change.label.trim() : p.label;
+  // Devenue un héritage / une réalisation (sans libellé) : elle rejoint la déclaration de la classe.
+  if ((kind === 'inheritance' || kind === 'realization') && !text && a !== b) {
+    const withoutLine = [...p.lines.slice(0, p.idx), ...p.lines.slice(p.idx + 1)].join('\n');
+    const inCode = addToDeclaration(withoutLine, a, b, kind);
+    if (inCode !== null) return inCode;
+  }
   const label = text ? ` : ${text}` : '';
   const comment = p.comment ? ` ${p.comment}` : '';
   p.lines[p.idx] = `${p.indent}${a} ${SYMBOL[kind]} ${b}${label}${comment}${p.eol}`;
@@ -111,6 +117,12 @@ export function updateRelation(source: string, ref: RelationRef, change: Relatio
  * la nouvelle ligne s'y colle ; sinon une ligne vide la sépare des déclarations.
  */
 export function addRelation(source: string, from: string, to: string, kind: RelationKind, label?: string): string {
+  // Héritage / réalisation d'une classe déclarée : on l'écrit dans son code (« extends » / « implements »),
+  // pour que le code et le diagramme disent toujours la même chose.
+  if ((kind === 'inheritance' || kind === 'realization') && !label?.trim() && from !== to) {
+    const inCode = addToDeclaration(source, from, to, kind);
+    if (inCode !== null) return inCode;
+  }
   const line = `${from} ${SYMBOL[kind]} ${to}${label?.trim() ? ` : ${label.trim()}` : ''}`;
   const trimmed = source.replace(/\s+$/, '');
   if (!trimmed) return `${line}\n`;
@@ -200,4 +212,36 @@ function detachMemberRelation(source: string, ref: RelationRef, change: Relation
   const to = change.to ?? ref.to;
   const [a, b] = change.reverse ? [to, from] : [from, to];
   return addRelation(source, a, b, kind, change.label);
+}
+
+/**
+ * Ajoute `parent` à « extends » (héritage) ou « implements » (réalisation) dans la déclaration
+ * de `name`. Renvoie null si la classe n'a pas de déclaration (elle n'existe que par ses liaisons).
+ */
+function addToDeclaration(source: string, name: string, parent: string, kind: RelationKind): string | null {
+  const lines = source.split('\n');
+  let depth = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const eol = raw.endsWith('\r') ? '\r' : '';
+    const body = eol ? raw.slice(0, -1) : raw;
+    const cut = body.indexOf('//');
+    const code = (cut >= 0 ? body.slice(0, cut) : body).trimEnd();
+    if (depth > 0) {
+      if (code.trim() === '}') depth--;
+      continue;
+    }
+    const decl = parseDecl(code);
+    if (!decl) continue;
+    if (decl.opens) depth++;
+    if (decl.name !== name) continue;
+    const list = kind === 'inheritance' ? decl.extends : decl.implements;
+    if (!list.includes(parent)) list.push(parent);
+    // Un parent ne peut pas être à la fois « extends » et « implements ».
+    if (kind === 'inheritance') decl.implements = decl.implements.filter((n) => n !== parent);
+    else decl.extends = decl.extends.filter((n) => n !== parent);
+    lines[i] = `${formatDecl(decl)}${cut >= 0 ? ` ${body.slice(cut)}` : ''}${eol}`;
+    return lines.join('\n');
+  }
+  return null;
 }

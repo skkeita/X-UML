@@ -41,3 +41,6 @@ export const DARK: SceneTheme = {
 };
 
 export const sceneTheme = (name: ThemeName): SceneTheme => (name === 'dark' ? DARK : LIGHT);
+
+/** Thème d'impression (PDF) : toujours clair, fond blanc, quel que soit le thème de l'écran. */
+export const PRINT: SceneTheme = { ...LIGHT, bg: '#ffffff' };

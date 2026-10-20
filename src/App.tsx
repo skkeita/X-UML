@@ -11,13 +11,14 @@ import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
 import { computeBoxes, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
 import { SAMPLE_SOURCE } from './core/sample';
-import { sceneTheme } from './core/theme';
+import { PRINT, sceneTheme } from './core/theme';
 import type { Diagram, Point, Positions, RelationKind } from './core/types';
 import { useAutosave } from './hooks/useAutosave';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useHistory } from './hooks/useHistory';
 import { useTheme } from './hooks/useTheme';
-import { buildSvgString, downloadText } from './lib/exportSvg';
+import { exportPdf } from './lib/exportPdf';
+import { buildSvg, buildSvgString, downloadText } from './lib/exportSvg';
 import { exportFileName, parseProjectFile, serializeProject } from './lib/projectFile';
 import { loadProject, type ProjectData } from './lib/storage';
 
@@ -210,6 +211,18 @@ export default function App() {
   const [fitKey, setFitKey] = useState(0);
   const [dragOver, setDragOver] = useState(false);
 
+  /** Export PDF : A4, thème clair, prêt à imprimer ou à joindre à un rapport. */
+  const downloadPdf = useCallback(async () => {
+    const { svg, width, height } = buildSvg(diagram, computeBoxes(diagram, positions), PRINT);
+    setToast({ id: Date.now(), message: 'Préparation du PDF…', tone: 'success' });
+    try {
+      await exportPdf(svg, width, height, exportFileName().replace(/\.json$/, '.pdf'));
+      setToast({ id: Date.now(), message: 'PDF exporté (A4, prêt à imprimer).', tone: 'success' });
+    } catch {
+      setToast({ id: Date.now(), message: 'Impossible de créer le PDF dans ce navigateur.', tone: 'error' });
+    }
+  }, [diagram, positions]);
+
   const downloadProject = useCallback(() => {
     downloadText(exportFileName(), serializeProject(source, positions), 'application/json');
     setToast({ id: Date.now(), message: 'Projet exporté : code et position des classes.', tone: 'success' });
@@ -265,13 +278,14 @@ export default function App() {
       else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
       else if (k === 'b') setEditorOpen((o) => !o);
       else if (k === 's') downloadProject(); // remplace « Enregistrer la page » du navigateur
+      else if (k === 'p') void downloadPdf(); // remplace l'impression de la page entière
       else if (k === 'o') fileInput.current?.click();
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo, downloadProject]);
+  }, [undo, redo, downloadProject, downloadPdf]);
 
   const hasErrors = result.errors.length > 0;
 
@@ -373,6 +387,7 @@ export default function App() {
         onExportSvg={exportSvg}
         onDownloadProject={downloadProject}
         onImport={() => fileInput.current?.click()}
+        onExportPdf={() => void downloadPdf()}
         saveStatus={saveStatus}
         onUndo={undo}
         onRedo={redo}

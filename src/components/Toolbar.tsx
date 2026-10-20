@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
-import { DownloadIcon, ImageIcon, MoonIcon, PanelIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
+import { DownloadIcon, ImageIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -13,6 +13,7 @@ interface Props {
   onDownloadProject: () => void;
   /** Ouvre le sélecteur de fichier pour importer un projet. */
   onImport: () => void;
+  onExportPdf: () => void;
   saveStatus: SaveStatus;
   onUndo: () => void;
   onRedo: () => void;
@@ -113,7 +114,7 @@ export function Toolbar(p: Props) {
           <UploadIcon />
           <span className="hidden sm:inline">Importer</span>
         </Button>
-        <ExportMenu onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
+        <ExportMenu onExportPdf={p.onExportPdf} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
         <Button onClick={p.onToggleTheme} title={p.theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
           {p.theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </Button>
@@ -123,7 +124,15 @@ export function Toolbar(p: Props) {
 }
 
 /** Menu « Exporter » : le projet complet (pour le reprendre plus tard) ou l'image du diagramme. */
-function ExportMenu({ onExportSvg, onExportProject }: { onExportSvg: () => void; onExportProject: () => void }) {
+function ExportMenu({
+  onExportPdf,
+  onExportSvg,
+  onExportProject,
+}: {
+  onExportPdf: () => void;
+  onExportSvg: () => void;
+  onExportProject: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -160,12 +169,13 @@ function ExportMenu({ onExportSvg, onExportProject }: { onExportSvg: () => void;
 
   return (
     <div ref={root} className="relative">
-      <Button onClick={() => setOpen((o) => !o)} title="Exporter (Ctrl+S pour le projet)" pressed={open}>
+      <Button onClick={() => setOpen((o) => !o)} title="Exporter : PDF (Ctrl+P), projet (Ctrl+S) ou image" pressed={open}>
         <DownloadIcon />
         <span className="hidden sm:inline">Exporter</span>
       </Button>
       {open && (
         <div role="menu" className="absolute right-0 top-10 z-30 w-72 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          {item(<PdfIcon />, 'Document PDF (.pdf)', 'Format A4, prêt à imprimer ou à joindre à un rapport (Ctrl+P)', onExportPdf)}
           {item(<DownloadIcon />, 'Projet X-UML (.json)', 'Le code et la position des classes, pour le réimporter plus tard', onExportProject)}
           {item(<ImageIcon />, 'Image du diagramme (.svg)', 'Nette à toutes les tailles, pour un rapport ou un site', onExportSvg)}
         </div>

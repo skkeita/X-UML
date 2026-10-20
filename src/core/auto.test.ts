@@ -63,8 +63,12 @@ describe('modifier une liaison automatique', () => {
     expect(parse(out).diagram.relations.map((r) => r.kind)).toEqual(['realization', 'composition']);
   });
 
-  it('inverser détache aussi la liaison', () => {
-    expect(updateRelation(SRC, REF, { reverse: true }).trimEnd().split('\n').at(-1)).toBe('Animal --|> Chien');
+  it('inverser écrit l’héritage dans l’autre sens (dans le code si la classe est déclarée)', () => {
+    const out = updateRelation(SRC, REF, { reverse: true });
+    expect(out.split('\n')[0]).toBe('class Chien implements Domestique { // note');
+    expect(out.trimEnd().split('\n').at(-1)).toBe('Animal --|> Chien'); // Animal n'est pas déclarée ici
+    const out2 = updateRelation(`${SRC}\nclass Animal {\n}`, REF, { reverse: true });
+    expect(out2).toContain('class Animal extends Chien {');
   });
 
   it('supprimer retire le parent de la déclaration', () => {
@@ -73,5 +77,34 @@ describe('modifier une liaison automatique', () => {
     expect(parse(out).diagram.relations).toHaveLength(1);
     const out2 = deleteRelation(out, { line: 1, from: 'Chien', to: 'Domestique', auto: true });
     expect(out2.split('\n')[0]).toBe('class Chien { // note');
+  });
+});
+
+describe('du diagramme vers le code', () => {
+  const SRC = 'class Chien {\n  + race: string\n}\nclass Animal\ninterface Domestique { }\n';
+
+  it('créer un héritage depuis le diagramme écrit « extends » dans la classe', async () => {
+    const { addRelation } = await import('./edit');
+    const out = addRelation(SRC, 'Chien', 'Animal', 'inheritance');
+    expect(out.split('\n')[0]).toBe('class Chien extends Animal {');
+    expect(out).not.toContain('--|>');
+    expect(parse(out).diagram.relations).toMatchObject([{ from: 'Chien', to: 'Animal', kind: 'inheritance', via: 'extends' }]);
+  });
+
+  it('créer une réalisation écrit « implements »', async () => {
+    const { addRelation } = await import('./edit');
+    expect(addRelation(SRC, 'Chien', 'Domestique', 'realization').split('\n')[0]).toBe('class Chien implements Domestique {');
+  });
+
+  it('changer une liaison écrite en héritage la déplace dans la déclaration', () => {
+    const src = `${SRC}Chien --> Animal`;
+    const out = updateRelation(src, { line: 6, from: 'Chien', to: 'Animal' }, { kind: 'inheritance' });
+    expect(out.split('\n')[0]).toBe('class Chien extends Animal {');
+    expect(out).not.toContain('Chien --> Animal');
+  });
+
+  it('une classe sans déclaration garde une liaison écrite', async () => {
+    const { addRelation } = await import('./edit');
+    expect(addRelation('class A', 'X', 'A', 'inheritance').trimEnd().split('\n').at(-1)).toBe('X --|> A');
   });
 });
