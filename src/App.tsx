@@ -6,17 +6,17 @@ import { SplitPane } from './components/SplitPane';
 import { Tabs } from './components/Tabs';
 import { Toast, type ToastData } from './components/Toast';
 import { Toolbar } from './components/Toolbar';
-import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, setColor, setCorners, setLegendVisible, toIdent, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
+import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, setColor, setCorners, setLegendVisible, toIdent, ungroup, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
 import { boundsOf, computeBoxes, computeFrames, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
 import { VOCABULARIES, inferDiagramType, summarize, type ElementKind } from './core/vocabulary';
-import { addElement, renameElement, setElementKind, setElementLabel, setGroupOf, setMembers, setObjectType, setParents, type MemberDraft } from './core/modelEdit';
+import { addElement, renameElement, setElementKind, setGroupTitle, setElementLabel, setGroupOf, setMembers, setObjectType, setParents, type MemberDraft } from './core/modelEdit';
 import { Inspector } from './components/Inspector';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
-import type { Diagram, DiagramType, Point, RelationKind } from './core/types';
+import type { Diagram, DiagramType, Group, Point, RelationKind } from './core/types';
 import { useAutosave } from './hooks/useAutosave';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useHistory } from './hooks/useHistory';
@@ -211,7 +211,18 @@ export default function App() {
     [editSource],
   );
   const handleRelationDelete = useCallback((ref: RelationRef) => editSource((src) => deleteRelation(src, ref)), [editSource]);
-  const handleDeleteNodes = useCallback((names: string[]) => editSource((src) => deleteNodes(src, names)), [editSource]);
+  /**
+   * Supprime seulement les éléments visés : les autres gardent exactement leur place
+   * (leurs positions actuelles sont figées, même celles calculées automatiquement).
+   */
+  const handleDeleteNodes = useCallback(
+    (names: string[]) => {
+      const gone = new Set(names);
+      const kept = Object.fromEntries(Object.entries(positions).filter(([n]) => !gone.has(n)));
+      history.push(onActive((b) => ({ ...b, source: deleteNodes(b.source, names), positions: { ...kept } })));
+    },
+    [positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   /** Duplique la sélection : copies décalées en diagonale (on voit tout de suite qu'il y en a deux), puis sélectionnées. */
   const handleDuplicate = useCallback(
     (names: string[]): string[] => {
@@ -271,7 +282,28 @@ export default function App() {
     },
     [active.source, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  /** Renommer depuis le diagramme : identifiant pour une classe / un objet, libellé affiché pour les autres. */
+  const handleRenameAny = useCallback(
+    (name: string, text: string) => {
+      const node = diagram.classes.find((c) => c.name === name);
+      const keepsId = !node || (node.kind ?? 'class') === 'class' || node.kind === 'object';
+      if (keepsId) handleRename(name, text);
+      else editSource((src) => setElementLabel(src, name, text));
+    },
+    [diagram, handleRename, editSource],
+  );
+  const handleRenameGroup = useCallback((group: Group, title: string) => editSource((src) => setGroupTitle(src, group, title)), [editSource]);
+  /** Dégrouper : le cadre disparaît, les éléments restent exactement à leur place. */
+  const handleUngroup = useCallback(
+    (group: Group) => {
+      const kept = Object.fromEntries(Object.entries(positions).filter(([n]) => n !== group.name));
+      history.push(onActive((b) => ({ ...b, source: ungroup(b.source, group), positions: kept })));
+    },
+    [positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const inspectorActions = {
+    onRenameGroup: handleRenameGroup,
+    onUngroup: handleUngroup,
     onTypeChange: setBoardType,
     onAdd: handleAddElement,
     onRename: handleRename,
@@ -657,6 +689,9 @@ export default function App() {
             onRelationAdd={handleRelationAdd}
             onSelectClass={handleSelectClass}
             selectedName={relationMode === 'custom' ? selectedClass : undefined}
+            onRenameElement={handleRenameAny}
+            onRenameGroup={handleRenameGroup}
+            onUngroup={handleUngroup}
             onDrop={handleDrop}
             onDeleteNodes={handleDeleteNodes}
             onDuplicate={handleDuplicate}

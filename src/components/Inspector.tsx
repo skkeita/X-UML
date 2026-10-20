@@ -3,7 +3,7 @@ import type { RelationChange, RelationRef } from '../core/edit';
 import { displayName } from '../core/layout';
 import type { MemberDraft } from '../core/modelEdit';
 import { NAMED_COLORS } from '../core/parser';
-import type { ClassNode, Diagram, DiagramType, Member, RelationKind, Visibility } from '../core/types';
+import type { ClassNode, Diagram, DiagramType, Group, Member, RelationKind, Visibility } from '../core/types';
 import { DIAGRAM_TYPE_ORDER, ELEMENT_LABEL, NAME_OF, VOCABULARIES, elementKindOf, type ElementKind, type Vocabulary } from '../core/vocabulary';
 import { RelationsPanel } from './RelationsPanel';
 
@@ -23,6 +23,8 @@ export interface InspectorActions {
   onMembers: (name: string, members: MemberDraft[]) => void;
   onObjectType: (name: string, type: string) => void;
   onGroup: (name: string, group: string | null) => void;
+  onRenameGroup: (group: Group, title: string) => void;
+  onUngroup: (group: Group) => void;
   onColor: (names: string[], color: string | null, label: string) => void;
   onDelete: (names: string[]) => void;
   onDuplicate: (names: string[]) => string[];
@@ -359,6 +361,29 @@ export function Inspector(p: Props) {
                 </ul>
               )}
             </Section>
+
+            {(diagram.groups?.length ?? 0) > 0 && (
+              <Section title={`Groupes (${diagram.groups?.length})`}>
+                <ul className="flex flex-col gap-1.5">
+                  {diagram.groups?.map((g) => (
+                    <li key={`${g.name}-${g.line}`} data-group-row={g.title} className="flex items-center gap-1.5">
+                      <span className="w-[74px] shrink-0 text-[11px] text-slate-400">
+                        {g.kind === 'package' ? 'Paquetage' : g.kind === 'system' ? 'Système' : 'Cadre'}
+                      </span>
+                      <CommitInput value={g.title} onCommit={(v) => v.trim() && p.onRenameGroup(g, v)} label={`Titre du groupe ${g.title}`} className={`${FIELD} h-7 text-[13px]`} />
+                      <button
+                        type="button"
+                        onClick={() => p.onUngroup(g)}
+                        title={`Dégrouper : le cadre disparaît, ses ${g.members.length} élément${g.members.length > 1 ? 's' : ''} restent`}
+                        className="h-7 shrink-0 rounded-md border border-slate-200 px-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                      >
+                        Dégrouper
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
 
             <div className="px-3 py-3">
               <RelationsPanel

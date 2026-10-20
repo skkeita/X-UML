@@ -30,6 +30,11 @@ interface Props {
   onDuplicate?: (names: string[]) => string[];
   onColor?: (names: string[], color: string | null, label: string) => void;
   onCreatePackage?: (title: string, names: string[]) => void;
+  /** Renommer un élément (double-clic) : nom d'une classe / d'un objet, libellé des autres. */
+  onRenameElement?: (name: string, text: string) => void;
+  /** Titre d'un groupe (paquetage, système, cadre) et dégroupement. */
+  onRenameGroup?: (group: Group, title: string) => void;
+  onUngroup?: (group: Group) => void;
   /** Consigne affichée sur un tableau vide (dépend du mode Code / Visuel). */
   emptyHint?: string;
   onTypeSelection?: (type: DiagramType, title: string, names: string[]) => void;
@@ -86,6 +91,9 @@ export function Canvas({
   onColor,
   onCreatePackage,
   emptyHint,
+  onRenameElement,
+  onRenameGroup,
+  onUngroup,
   onTypeSelection,
   fitKey = 0,
   focus,
@@ -95,6 +103,10 @@ export function Canvas({
   const didFit = useRef(false);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [selected, setSelected] = useState<string | null>(null);
+  /** Groupe dont on a cliqué le titre : le menu propose alors Renommer / Dégrouper. */
+  const [activeFrame, setActiveFrame] = useState<string | null>(null);
+  /** Renommage en place (double-clic sur un élément ou sur le titre d'un groupe). */
+  const [renaming, setRenaming] = useState<{ type: 'element'; name: string } | { type: 'group'; name: string } | null>(null);
   useEffect(() => {
     if (selectedName !== undefined) setSelected(selectedName);
   }, [selectedName]);
@@ -334,6 +346,7 @@ export function Canvas({
     setSelected(null);
     const members = group.members.filter((m) => boxes[m]);
     setSelection(new Set(members));
+    setActiveFrame(group.name);
     startMove(members, e);
   };
 
@@ -430,6 +443,35 @@ export function Canvas({
     setPanning(false);
   };
 
+  /** Double-clic : renommer l'élément ou le groupe visé, directement sur le diagramme. */
+  const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Par coordonnées : pendant un glisser, le pointeur est capturé par le canevas (la cible n'est pas l'élément).
+    const w = toWorld(e.clientX, e.clientY);
+    const name = boxAt(w);
+    if (name && onRenameElement) {
+      setRenaming({ type: 'element', name });
+      return;
+    }
+    if (!onRenameGroup) return;
+    // Groupe : le plus petit cadre qui contient le point (un cadre imbriqué l'emporte sur son parent).
+    const hit = (diagram.groups ?? [])
+      .filter((g) => {
+        const r = frames[g.name];
+        return r && w.x >= r.x && w.x <= r.x + r.w && w.y >= r.y && w.y <= r.y + r.h;
+      })
+      .sort((a, b) => frames[a.name].w * frames[a.name].h - frames[b.name].w * frames[b.name].h)[0];
+    if (hit) setRenaming({ type: 'group', name: hit.name });
+  };
+
+  // Le menu « groupe » ne vaut que tant que la sélection est exactement celle du groupe cliqué.
+  const frameGroup = (() => {
+    if (!activeFrame) return null;
+    const g = diagram.groups?.find((x) => x.name === activeFrame);
+    if (!g) return null;
+    const members = g.members.filter((m) => boxes[m]);
+    return members.length === selected2.size && members.every((m) => selected2.has(m)) ? g : null;
+  })();
+
   // --- Rendu ------------------------------------------------------------------------------------
 
   // Trait « élastique » + classe visée mise en évidence.
@@ -458,6 +500,7 @@ export function Canvas({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onDoubleClick={onDoubleClick}
       >
         {/* Grille de points : repère visuel de l'aimantation, suit pan et zoom */}
         <defs>
@@ -539,9 +582,49 @@ export function Canvas({
         />
       )}
 
+      {/* Renommage en place (double-clic) */}
+      {renaming &&
+        (() => {
+          const isEl = renaming.type === 'element';
+          const node = isEl ? diagram.classes.find((c) => c.name === renaming.name) : undefined;
+          const group = !isEl ? diagram.groups?.find((g) => g.name === renaming.name) : undefined;
+          const r = isEl ? boxes[renaming.name] : group ? frames[group.name] : undefined;
+          if ((!node && !group) || !r) return null;
+          const p = toScreen({ x: r.x, y: r.y });
+          const keepsId = node && ((node.kind ?? 'class') === 'class' || node.kind === 'object');
+          const value = node ? (keepsId ? node.name : (node.label ?? node.name)) : (group?.title ?? '');
+          const close = () => setRenaming(null);
+          return (
+            <input
+              key={`${renaming.type}-${renaming.name}`}
+              autoFocus
+              defaultValue={value}
+              aria-label={node ? 'Nouveau nom' : 'Nouveau titre du groupe'}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={(e) => {
+                const v = e.currentTarget.value.trim();
+                if (v && v !== value) {
+                  if (node) onRenameElement?.(node.name, v);
+                  else if (group) onRenameGroup?.(group, v);
+                }
+                close();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') {
+                  e.currentTarget.value = value;
+                  e.currentTarget.blur();
+                }
+              }}
+              className="absolute z-30 h-8 rounded-md border-2 border-indigo-500 bg-white px-2 text-center font-mono text-sm font-semibold text-slate-900 shadow-lg focus:outline-none dark:bg-slate-900 dark:text-white"
+              style={{ left: p.x, top: p.y + (node ? 4 : -4), width: Math.max(160, r.w * view.k) }}
+            />
+          );
+        })()}
+
       {/* Menu : actions sur une sélection multiple */}
       {selected2.size > 0 && !lasso && !link && !dragging && (() => {
-        const b = boundsOf([...selected2].map((n) => boxes[n]));
+        const b = frameGroup && frames[frameGroup.name] ? frames[frameGroup.name] : boundsOf([...selected2].map((n) => boxes[n]));
         if (!b) return null;
         const top = toScreen({ x: b.x + b.w / 2, y: b.y });
         const bottom = toScreen({ x: b.x, y: b.y + b.h });
@@ -551,8 +634,19 @@ export function Canvas({
         const above = top.y - 12 >= 140;
         return (
           <SelectionMenu
-            key={names.join('|')}
-            x={clamp(top.x, 240, bounds.w - 240)}
+            key={`${frameGroup?.name ?? ''}|${names.join('|')}`}
+            frame={frameGroup ? { title: frameGroup.title, kind: frameGroup.kind } : undefined}
+            onRenameFrame={frameGroup && onRenameGroup ? (title) => onRenameGroup(frameGroup, title) : undefined}
+            onUngroup={
+              frameGroup && onUngroup
+                ? () => {
+                    onUngroup(frameGroup);
+                    setActiveFrame(null);
+                  }
+                : undefined
+            }
+            x={top.x}
+            boundsW={bounds.w}
             y={above ? top.y - 12 : Math.min(bottom.y + 12, bounds.h - 60)}
             above={above}
             names={names}

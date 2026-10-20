@@ -100,7 +100,7 @@ function lastDeclEnd(lines: string[]): number {
 }
 
 /** Insère des lignes après les déclarations existantes (avant les relations), séparées par une ligne vide. */
-function insertDecl(source: string, block: string[]): string {
+export function insertDecl(source: string, block: string[]): string {
   const trimmed = source.replace(/\s+$/, '');
   if (!trimmed) return `${block.join('\n')}\n`;
   const lines = trimmed.split('\n');
@@ -276,3 +276,31 @@ export function setGroupOf(source: string, name: string, group: string | null): 
 /** Caractère valide dans un identifiant (pour filtrer la saisie d'un nom de classe). */
 export const isIdentChar = (ch: string) => IDENT_CHARS.test(ch);
 export { ELEMENT_KW };
+
+/** Groupe tel que le décrit le modèle (paquetage, système, cadre de diagramme). */
+export interface GroupRef {
+  name: string;
+  kind: 'package' | 'system' | 'frame';
+  /** Ligne (1-based) de sa déclaration. */
+  line: number;
+}
+
+/** Renomme le titre affiché d'un groupe (l'identifiant du script ne change pas). */
+export function setGroupTitle(source: string, group: GroupRef, title: string): string {
+  const lines = source.split('\n');
+  const i = group.line - 1;
+  if (i < 0 || i >= lines.length) return source;
+  const [code, comment] = splitComment(lines[i]);
+  const t = title.trim().replace(/"/g, '’');
+  if (group.kind === 'frame') {
+    const m = /^(\s*diagram\s+\w+)(?:\s+"[^"]*")?(\s*:\s*.+?)\s*$/u.exec(code);
+    if (!m) return source;
+    lines[i] = withComment(`${m[1]}${t ? ` "${t}"` : ''}${m[2]}`, comment);
+  } else {
+    const m = GROUP_LINE.exec(code);
+    if (!m || m[3] !== group.name) return source;
+    const [, indent, kw, id, , list] = m;
+    lines[i] = withComment(`${indent}${kw} ${id}${t && t !== id ? ` "${t}"` : ''} : ${list}`, comment);
+  }
+  return lines.join('\n');
+}
