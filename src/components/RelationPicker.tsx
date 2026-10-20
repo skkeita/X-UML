@@ -5,12 +5,17 @@ interface Props {
   /** Position écran (px, relative au canevas) où ancrer le panneau. */
   x: number;
   y: number;
+  /** Taille du canevas : le panneau est replacé pour ne jamais en déborder. */
+  bounds: { w: number; h: number };
   from: string;
-  to: string;
-  current: RelationKind;
+  /** null : la cible sera choisie ensuite, d'un clic sur une classe. */
+  to: string | null;
+  /** Type actuel (édition d'un lien existant) ; absent lors d'une création. */
+  current?: RelationKind;
   onPick: (kind: RelationKind) => void;
-  onReverse: () => void;
-  onDelete: () => void;
+  /** Actions d'édition, uniquement pour un lien existant. */
+  onReverse?: () => void;
+  onDelete?: () => void;
   onClose: () => void;
 }
 
@@ -47,18 +52,26 @@ const PANEL_W = 264;
  * Panneau contextuel affiché au clic sur un lien.
  * UX : choix visuel (aperçu de la flèche) + raccourcis 1–7, R (inverser), Suppr, Échap.
  */
-export function RelationPicker({ x, y, from, to, current, onPick, onReverse, onDelete, onClose }: Props) {
+export function RelationPicker({ x, y, bounds, from, to, current, onPick, onReverse, onDelete, onClose }: Props) {
+  // Hauteur approximative (7 lignes + en-tête + pied) : suffit pour décider de l'ouvrir au-dessus.
+  const panelH = onReverse || onDelete ? 330 : to ? 290 : 320;
+  const left = Math.min(Math.max(8, x - PANEL_W / 2), Math.max(8, bounds.w - PANEL_W - 8));
+  const below = y + 14;
+  const top = below + panelH <= bounds.h - 8 ? below : Math.max(8, y - 14 - panelH);
   return (
     <div
       role="dialog"
       aria-label="Type de lien"
       onPointerDown={(e) => e.stopPropagation()}
       className="absolute z-10 rounded-xl border border-slate-200 bg-white/95 p-1.5 text-sm shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
-      style={{ left: Math.max(8, x - PANEL_W / 2), top: y + 14, width: PANEL_W }}
+      style={{ left, top, width: PANEL_W }}
     >
       <div className="flex items-center justify-between px-2 pb-1.5 pt-1 text-xs text-slate-500 dark:text-slate-400">
-        <span className="truncate font-mono">
-          {from} → {to}
+        <span className="truncate">
+          {current === undefined && <span className="mr-1 font-sans font-medium text-indigo-600 dark:text-indigo-400">Nouveau lien</span>}
+          <span className="font-mono">
+            {from} → {to ?? '?'}
+          </span>
         </span>
         <button type="button" onClick={onClose} title="Fermer (Échap)" className="rounded px-1 hover:bg-slate-100 dark:hover:bg-slate-800">
           ✕
@@ -90,6 +103,11 @@ export function RelationPicker({ x, y, from, to, current, onPick, onReverse, onD
         })}
       </ul>
 
+      {!to && (
+        <p className="px-2 pb-1 pt-1.5 text-[11px] text-slate-500 dark:text-slate-400">Choisissez une flèche, puis cliquez sur la classe cible.</p>
+      )}
+
+      {(onReverse || onDelete) && (
       <div className="mt-1 flex gap-1 border-t border-slate-200 pt-1.5 dark:border-slate-700">
         <button type="button" onClick={onReverse} title="Inverser le sens (R)" className="flex-1 rounded-md px-2 py-1.5 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
           ⇄ Inverser
@@ -98,6 +116,7 @@ export function RelationPicker({ x, y, from, to, current, onPick, onReverse, onD
           Supprimer
         </button>
       </div>
+      )}
     </div>
   );
 }

@@ -90,6 +90,19 @@ export function updateRelation(source: string, ref: RelationRef, change: Relatio
   return p.lines.join('\n');
 }
 
+/**
+ * Ajoute une relation en fin de script. Si le script se termine par un bloc de relations,
+ * la nouvelle ligne s'y colle ; sinon une ligne vide la sépare des déclarations.
+ */
+export function addRelation(source: string, from: string, to: string, kind: RelationKind): string {
+  const line = `${from} ${SYMBOL[kind]} ${to}`;
+  const trimmed = source.replace(/\s+$/, '');
+  if (!trimmed) return `${line}\n`;
+  const lastLine = trimmed.slice(trimmed.lastIndexOf('\n') + 1).trim();
+  const sep = RELATION.test(lastLine.replace(/\/\/.*$/, '').trim()) ? '\n' : '\n\n';
+  return `${trimmed}${sep}${line}\n`;
+}
+
 /** Supprime la ligne de la relation. */
 export function deleteRelation(source: string, ref: RelationRef): string {
   const p = locate(source, ref);

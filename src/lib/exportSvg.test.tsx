@@ -16,3 +16,12 @@ describe('buildSvgString', () => {
     expect(svg).toContain('«interface»');
   });
 });
+
+describe('export sans éléments d’interface', () => {
+  it('n’inclut ni poignées ni zones de clic', () => {
+    const { diagram } = parse(SAMPLE_SOURCE);
+    const svg = buildSvgString(diagram, computeBoxes(diagram, layoutNewClasses(diagram, {})), LIGHT);
+    expect(svg).not.toContain('data-handle');
+    expect(svg).not.toContain('stroke="transparent"');
+  });
+});

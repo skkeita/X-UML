@@ -10,7 +10,7 @@ import {
   splitMembers,
 } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
-import type { ClassNode, Diagram, Rect, Relation, RelationKind } from '../core/types';
+import type { ClassNode, Diagram, Point, Rect, Relation, RelationKind } from '../core/types';
 
 /*
  * Moteur de rendu SVG pur : aucune dépendance au DOM ni à l'état.
@@ -27,6 +27,10 @@ interface Props {
   selectedEdge?: number | null;
   onBoxPointerDown?: (name: string, e: ReactPointerEvent<SVGGElement>) => void;
   onEdgePointerDown?: (relation: Relation, e: ReactPointerEvent<SVGGElement>) => void;
+  /** Classe mise en évidence comme cible pendant la création d'un lien. */
+  highlighted?: string | null;
+  /** Poignée de connexion (milieu d'un côté) : point de départ d'un nouveau lien, en coordonnées monde. */
+  onHandlePointerDown?: (name: string, at: Point, e: ReactPointerEvent<SVGGElement>) => void;
 }
 
 const DASHED: RelationKind[] = ['realization', 'dependency'];
@@ -53,13 +57,17 @@ function ClassBox({
   rect,
   theme,
   selected,
+  highlighted,
   onPointerDown,
+  onHandlePointerDown,
 }: {
   node: ClassNode;
   rect: Rect;
   theme: SceneTheme;
   selected: boolean;
+  highlighted: boolean;
   onPointerDown?: (e: ReactPointerEvent<SVGGElement>) => void;
+  onHandlePointerDown?: (at: Point, e: ReactPointerEvent<SVGGElement>) => void;
 }) {
   const { attrs, methods } = splitMembers(node);
   const headH = headerHeight(node);
@@ -67,6 +75,15 @@ function ClassBox({
   const { w, h } = rect;
   const r = 6;
   const text = { fontFamily: FONT_FAMILY, fontSize: FONT_SIZE, fill: theme.text } as const;
+  const active = selected || highlighted;
+  const stroke = active ? theme.accent : theme.boxStroke;
+  // Milieu des 4 côtés (coordonnées locales à la boîte).
+  const handles: Point[] = [
+    { x: w / 2, y: 0 },
+    { x: w, y: h / 2 },
+    { x: w / 2, y: h },
+    { x: 0, y: h / 2 },
+  ];
 
   const renderRows = (members: typeof attrs, top: number) =>
     members.map((m, i) => (
@@ -81,16 +98,17 @@ function ClassBox({
       onPointerDown={onPointerDown}
       style={{ cursor: onPointerDown ? 'grab' : undefined }}
       data-class={node.name}
+      className="group"
     >
       {/* Corps + ombre portée légère pour détacher la boîte du fond */}
-      <rect width={w} height={h} rx={r} fill={theme.boxFill} stroke={selected ? theme.accent : theme.boxStroke} strokeWidth={selected ? 2 : 1.2} />
+      <rect width={w} height={h} rx={r} fill={theme.boxFill} stroke={stroke} strokeWidth={active ? 2 : 1.2} />
       {/* En-tête aux coins supérieurs arrondis */}
       <path
         d={`M 0 ${headH} L 0 ${r} Q 0 0 ${r} 0 L ${w - r} 0 Q ${w} 0 ${w} ${r} L ${w} ${headH} Z`}
         fill={theme.headerFill}
       />
-      <line x1={0} y1={headH} x2={w} y2={headH} stroke={selected ? theme.accent : theme.boxStroke} strokeWidth={1} />
-      <line x1={0} y1={headH + attrsH} x2={w} y2={headH + attrsH} stroke={selected ? theme.accent : theme.boxStroke} strokeWidth={1} />
+      <line x1={0} y1={headH} x2={w} y2={headH} stroke={stroke} strokeWidth={1} />
+      <line x1={0} y1={headH + attrsH} x2={w} y2={headH + attrsH} stroke={stroke} strokeWidth={1} />
 
       {node.stereotype && (
         <text x={w / 2} y={16} textAnchor="middle" {...text} fill={theme.muted} fontSize={11}>
@@ -111,11 +129,40 @@ function ClassBox({
 
       {renderRows(attrs, headH)}
       {renderRows(methods, headH + attrsH)}
+
+      {/* Poignées de connexion : visibles au survol (ou si la boîte est sélectionnée, pour le tactile).
+          Absentes de l'export SVG puisqu'aucun gestionnaire n'y est passé. */}
+      {onHandlePointerDown &&
+        handles.map((p, i) => (
+          <g
+            key={i}
+            data-handle={i}
+            className={`transition-opacity ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            style={{ cursor: 'crosshair' }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onHandlePointerDown({ x: rect.x + p.x, y: rect.y + p.y }, e);
+            }}
+          >
+            <circle cx={p.x} cy={p.y} r={11} fill="transparent" />
+            <circle cx={p.x} cy={p.y} r={5} fill={theme.boxFill} stroke={theme.accent} strokeWidth={1.6} />
+          </g>
+        ))}
     </g>
   );
 }
 
-export function DiagramScene({ diagram, boxes, theme, selected, selectedEdge, onBoxPointerDown, onEdgePointerDown }: Props) {
+export function DiagramScene({
+  diagram,
+  boxes,
+  theme,
+  selected,
+  selectedEdge,
+  highlighted,
+  onBoxPointerDown,
+  onEdgePointerDown,
+  onHandlePointerDown,
+}: Props) {
   const edges = computeEdges(diagram.relations, boxes);
 
   return (
@@ -189,7 +236,9 @@ export function DiagramScene({ diagram, boxes, theme, selected, selectedEdge, on
               rect={rect}
               theme={theme}
               selected={selected === c.name}
+              highlighted={highlighted === c.name}
               onPointerDown={onBoxPointerDown ? (e) => onBoxPointerDown(c.name, e) : undefined}
+              onHandlePointerDown={onHandlePointerDown ? (at, e) => onHandlePointerDown(c.name, at, e) : undefined}
             />
           );
         })}

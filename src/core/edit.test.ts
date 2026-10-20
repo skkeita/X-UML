@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deleteRelation, SYMBOL, updateRelation } from './edit';
+import { addRelation, deleteRelation, SYMBOL, updateRelation } from './edit';
 import { parse } from './parser';
 
 const SRC = 'class A\n  Chien --> Animal : adopte // note\nB -- C';
@@ -29,6 +29,20 @@ describe('édition des relations depuis le canevas', () => {
   it('ne modifie rien si la ligne ne correspond plus', () => {
     expect(updateRelation(SRC, { line: 2, from: 'X', to: 'Y' }, { kind: 'dependency' })).toBe(SRC);
     expect(updateRelation(SRC, { line: 99, from: 'Chien', to: 'Animal' }, { kind: 'dependency' })).toBe(SRC);
+  });
+
+  it('ajoute une relation après le bloc de relations existant', () => {
+    expect(addRelation('class A\n\nA -- B\n', 'B', 'C', 'inheritance')).toBe('class A\n\nA -- B\nB --|> C\n');
+  });
+
+  it('sépare la nouvelle relation des déclarations par une ligne vide', () => {
+    const out = addRelation('class A {\n + x\n}', 'A', 'B', 'composition');
+    expect(out).toBe('class A {\n + x\n}\n\nA *-- B\n');
+    expect(parse(out).errors).toEqual([]);
+  });
+
+  it('ajoute dans un script vide', () => {
+    expect(addRelation('', 'A', 'B', 'association')).toBe('A -- B\n');
   });
 
   it('préserve les fins de ligne Windows', () => {

@@ -3,24 +3,35 @@ import { Canvas } from './components/Canvas';
 import { CodeEditor } from './components/CodeEditor';
 import { SplitPane } from './components/SplitPane';
 import { Toolbar } from './components/Toolbar';
-import { deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
+import { addRelation, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { computeBoxes, layoutNewClasses } from './core/layout';
 import { parse } from './core/parser';
 import { SAMPLE_SOURCE } from './core/sample';
 import { sceneTheme } from './core/theme';
-import type { Diagram, Point, Positions } from './core/types';
+import type { Diagram, Point, Positions, RelationKind } from './core/types';
 import { useAutosave } from './hooks/useAutosave';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
+import { useHistory } from './hooks/useHistory';
 import { useTheme } from './hooks/useTheme';
 import { buildSvgString, downloadText } from './lib/exportSvg';
 import { loadProject, type ProjectData } from './lib/storage';
+
+/** Tout ce que l'utilisateur peut modifier — donc tout ce que Ctrl+Z doit pouvoir restaurer. */
+interface DocState {
+  source: string;
+  /** Positions choisies par l'utilisateur (les autres sont calculées automatiquement). */
+  positions: Positions;
+}
 
 export default function App() {
   const { theme, toggle } = useTheme();
   const initial = useMemo(loadProject, []);
 
-  const [source, setSource] = useState(initial?.source ?? SAMPLE_SOURCE);
-  const [stored, setStored] = useState<Positions>(initial?.positions ?? {});
+  const history = useHistory<DocState>(() => ({
+    source: initial?.source ?? SAMPLE_SOURCE,
+    positions: initial?.positions ?? {},
+  }));
+  const { source, positions: stored } = history.present;
   const [editorOpen, setEditorOpen] = useState(true);
 
   // 1) Parsing temps réel avec anti-rebond : la frappe reste fluide, le rendu suit ~150 ms après.
@@ -28,7 +39,7 @@ export default function App() {
   const result = useMemo(() => parse(debounced), [debounced]);
 
   // 2) Dernier rendu valide : si le script contient une erreur, le canevas ne « clignote » pas ni ne se vide.
-  const [diagram, setDiagram] = useState<Diagram>(() => parse(initial?.source ?? SAMPLE_SOURCE).diagram);
+  const [diagram, setDiagram] = useState<Diagram>(() => parse(source).diagram);
   useEffect(() => {
     if (result.errors.length === 0) setDiagram(result.diagram);
   }, [result]);
@@ -36,18 +47,34 @@ export default function App() {
   // 3) Positions effectives : celles de l'utilisateur + placement automatique des nouvelles classes seulement.
   const positions = useMemo(() => layoutNewClasses(diagram, stored), [diagram, stored]);
 
+  // --- Actions (toutes passent par l'historique) -------------------------------------------
+
+  const setSourceTyped = useCallback((v: string) => history.type((s) => ({ ...s, source: v })), [history.type]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Un glisser = une seule étape d'annulation : 'push' au premier mouvement, 'merge' ensuite. */
   const handleMove = useCallback(
-    (name: string, p: Point) => setStored((s) => ({ ...s, ...positions, [name]: p })),
-    [positions],
+    (name: string, p: Point, first: boolean) => {
+      const apply = (s: DocState): DocState => ({ ...s, positions: { ...s.positions, ...positions, [name]: p } });
+      if (first) history.push(apply);
+      else history.merge(apply);
+    },
+    [positions, history.push, history.merge], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // Édition depuis le canevas : on réécrit la ligne du script (le texte reste la source de vérité,
-  // et Ctrl+Z dans l'éditeur reste cohérent avec ce qui est affiché).
-  const handleRelationChange = useCallback(
-    (ref: RelationRef, change: RelationChange) => setSource((s) => updateRelation(s, ref, change)),
-    [],
+  // Édition depuis le canevas : on réécrit le script (le texte reste la source de vérité).
+  const editSource = useCallback(
+    (fn: (src: string) => string) => history.push((s) => ({ ...s, source: fn(s.source) })),
+    [history.push], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const handleRelationDelete = useCallback((ref: RelationRef) => setSource((s) => deleteRelation(s, ref)), []);
+  const handleRelationChange = useCallback(
+    (ref: RelationRef, change: RelationChange) => editSource((src) => updateRelation(src, ref, change)),
+    [editSource],
+  );
+  const handleRelationDelete = useCallback((ref: RelationRef) => editSource((src) => deleteRelation(src, ref)), [editSource]);
+  const handleRelationAdd = useCallback(
+    (from: string, to: string, kind: RelationKind) => editSource((src) => addRelation(src, from, to, kind)),
+    [editSource],
+  );
 
   // 4) Persistance locale automatique.
   const project = useMemo<ProjectData>(() => ({ version: 1, source, positions }), [source, positions]);
@@ -59,24 +86,29 @@ export default function App() {
   };
   const downloadProject = () => downloadText('projet.x-uml.json', JSON.stringify(project, null, 2), 'application/json');
 
-  // Raccourci : Ctrl/Cmd+B pour escamoter l'éditeur (plus de place pour le canevas).
+  // Raccourcis globaux. Ctrl+Z est intercepté AUSSI dans l'éditeur : l'annulation native du
+  // <textarea> ignorerait les modifications faites depuis le canevas et désynchroniserait tout.
+  const { undo, redo } = history;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        setEditorOpen((o) => !o);
-      }
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) undo();
+      else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
+      else if (k === 'b') setEditorOpen((o) => !o);
+      else return;
+      e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [undo, redo]);
 
   const hasErrors = result.errors.length > 0;
 
   const editorPanel = (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1">
-        <CodeEditor value={source} onChange={setSource} errors={result.errors} />
+        <CodeEditor value={source} onChange={setSourceTyped} errors={result.errors} />
       </div>
       <footer
         className={`shrink-0 border-t px-3 py-2 text-xs ${
@@ -114,6 +146,10 @@ export default function App() {
         onExportSvg={exportSvg}
         onDownloadProject={downloadProject}
         saveStatus={saveStatus}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={history.canUndo}
+        canRedo={history.canRedo}
       />
       <SplitPane
         leftOpen={editorOpen}
@@ -126,6 +162,7 @@ export default function App() {
             onMove={handleMove}
             onRelationChange={handleRelationChange}
             onRelationDelete={handleRelationDelete}
+            onRelationAdd={handleRelationAdd}
           />
         }
       />

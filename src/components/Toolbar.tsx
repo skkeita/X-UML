@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
-import { DownloadIcon, ImageIcon, MoonIcon, PanelIcon, SunIcon } from './Icons';
+import { DownloadIcon, ImageIcon, MoonIcon, PanelIcon, RedoIcon, SunIcon, UndoIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -11,6 +11,10 @@ interface Props {
   onExportSvg: () => void;
   onDownloadProject: () => void;
   saveStatus: SaveStatus;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const STATUS: Record<SaveStatus, { label: string; dot: string }> = {
@@ -19,14 +23,27 @@ const STATUS: Record<SaveStatus, { label: string; dot: string }> = {
   error: { label: 'Échec de la sauvegarde locale', dot: 'bg-red-500' },
 };
 
-function Button({ onClick, title, children, pressed }: { onClick: () => void; title: string; children: ReactNode; pressed?: boolean }) {
+function Button({
+  onClick,
+  title,
+  children,
+  pressed,
+  disabled,
+}: {
+  onClick: () => void;
+  title: string;
+  children: ReactNode;
+  pressed?: boolean;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
       aria-pressed={pressed}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-slate-200 dark:hover:bg-slate-800 ${
+      disabled={disabled}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-slate-700 transition-colors disabled:pointer-events-none disabled:opacity-35 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-slate-200 dark:hover:bg-slate-800 ${
         pressed ? 'bg-slate-100 dark:bg-slate-800' : ''
       }`}
     >
@@ -54,6 +71,14 @@ export function Toolbar(p: Props) {
       </div>
 
       <div className="flex items-center gap-1">
+        {/* Annuler / rétablir visibles : la fonction se découvre sans connaître le raccourci */}
+        <Button onClick={p.onUndo} title="Annuler (Ctrl+Z)" disabled={!p.canUndo}>
+          <UndoIcon />
+        </Button>
+        <Button onClick={p.onRedo} title="Rétablir (Ctrl+Y ou Ctrl+Maj+Z)" disabled={!p.canRedo}>
+          <RedoIcon />
+        </Button>
+        <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
         <Button onClick={p.onExportSvg} title="Exporter le diagramme en SVG">
           <ImageIcon />
           <span className="hidden sm:inline">Exporter SVG</span>

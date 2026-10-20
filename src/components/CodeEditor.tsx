@@ -1,4 +1,4 @@
-import { useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import type { ParseError } from '../core/types';
 
 interface Props {
@@ -48,6 +48,33 @@ const TEXT = 'font-mono text-[13px] leading-[20px] whitespace-pre';
 
 export function CodeEditor({ value, onChange, errors }: Props) {
   const preRef = useRef<HTMLPreElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  /** Dernière valeur produite par la frappe : tout autre changement vient d'un Ctrl+Z ou du canevas. */
+  const typed = useRef(value);
+
+  // Changement externe (annuler / rétablir) : React replacerait le curseur en fin de texte.
+  // On le remet à l'endroit modifié, pour que l'utilisateur voie ce qui a été annulé.
+  useLayoutEffect(() => {
+    const prev = typed.current;
+    if (value === prev) return;
+    typed.current = value;
+    const ta = taRef.current;
+    if (!ta || document.activeElement !== ta) return;
+    let start = 0;
+    while (start < prev.length && start < value.length && prev[start] === value[start]) start++;
+    let endPrev = prev.length;
+    let endNew = value.length;
+    while (endPrev > start && endNew > start && prev[endPrev - 1] === value[endNew - 1]) {
+      endPrev--;
+      endNew--;
+    }
+    ta.setSelectionRange(endNew, endNew);
+  }, [value]);
+
+  const emit = (v: string) => {
+    typed.current = v;
+    onChange(v);
+  };
   const errorLines = useMemo(() => new Set(errors.map((e) => e.line)), [errors]);
   const lines = useMemo(() => value.split('\n'), [value]);
 
@@ -64,7 +91,7 @@ export function CodeEditor({ value, onChange, errors }: Props) {
       const ta = e.currentTarget;
       if (!document.execCommand('insertText', false, '  ')) {
         const { selectionStart: s, selectionEnd: end } = ta;
-        onChange(value.slice(0, s) + '  ' + value.slice(end));
+        emit(value.slice(0, s) + '  ' + value.slice(end));
         requestAnimationFrame(() => {
           ta.selectionStart = ta.selectionEnd = s + 2;
         });
@@ -92,7 +119,8 @@ export function CodeEditor({ value, onChange, errors }: Props) {
 
       <textarea
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        ref={taRef}
+        onChange={(e) => emit(e.target.value)}
         onScroll={(e) => syncScroll(e.currentTarget)}
         onKeyDown={onKeyDown}
         spellCheck={false}
