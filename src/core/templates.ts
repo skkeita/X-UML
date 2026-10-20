@@ -1,4 +1,5 @@
 import { SAMPLE_SOURCE } from './sample';
+import type { DiagramType } from './types';
 
 /*
  * Modèles proposés à la création d'un tableau : un exemple court et correct de chaque type
@@ -13,12 +14,15 @@ export interface Template {
   label: string;
   hint: string;
   source: string;
+  /** Type de diagramme du tableau créé (absent pour un tableau vide : déduit de son contenu). */
+  type?: DiagramType;
 }
 
 export const TEMPLATES: Template[] = [
   { id: 'empty', name: 'Tableau', label: 'Tableau vide', hint: 'Une page blanche', source: '' },
   {
     id: 'class',
+    type: 'class',
     name: 'Classes',
     label: 'Diagramme de classes',
     hint: 'Classes, héritage, interfaces',
@@ -26,6 +30,7 @@ export const TEMPLATES: Template[] = [
   },
   {
     id: 'usecase',
+    type: 'usecase',
     name: 'Cas d’utilisation',
     label: 'Cas d’utilisation',
     hint: 'Acteurs, cas, frontière du système, «include»',
@@ -51,6 +56,7 @@ diagram usecase "Gestion des commandes" : Client, Admin, Consulter, Commander, P
   },
   {
     id: 'context',
+    type: 'context',
     name: 'Contexte statique',
     label: 'Contexte statique',
     hint: 'Le système et les acteurs qui l’entourent',
@@ -71,6 +77,7 @@ diagram context "Bibliothèque" : Biblio, Adherent, Bibliothecaire, Fournisseur,
   },
   {
     id: 'package',
+    type: 'package',
     name: 'Paquetages',
     label: 'Paquetages',
     hint: 'Paquetages et dépendances entre eux',
@@ -90,6 +97,7 @@ diagram package "Architecture" : IHM, Metier, Donnees, Securite
   },
   {
     id: 'communication',
+    type: 'communication',
     name: 'Communication',
     label: 'Communication',
     hint: 'Objets et messages numérotés',

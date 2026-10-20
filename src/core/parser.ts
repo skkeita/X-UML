@@ -256,6 +256,7 @@ export function parse(source: string): ParseResult {
       node.line = lineNo;
       node.label = kw === 'object' ? `${name}${type ? ` : ${type}` : ''}` : label;
       if (kw === 'object' && label) node.label = label;
+      if (kw === 'object' && type) node.classifier = type;
       continue;
     }
 

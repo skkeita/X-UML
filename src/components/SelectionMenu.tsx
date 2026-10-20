@@ -18,6 +18,9 @@ interface Props {
   above?: boolean;
   names: string[];
   onPackage: (title: string) => void;
+  /** Regroupement proposé (« Regrouper dans un paquetage », « Placer dans un système »). */
+  groupAction: string;
+  groupPlaceholder: string;
   onType: (type: DiagramType, title: string) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -36,7 +39,7 @@ interface Props {
  * Menu flottant au-dessus d'une sélection multiple : tout ce qu'on peut faire avec,
  * sans quitter le diagramme ni écrire de code.
  */
-export function SelectionMenu({ x, y, above, names, onPackage, onType, onDelete, onDuplicate, onColor, legend, currentColor, colors, onClear }: Props) {
+export function SelectionMenu({ x, y, above, names, onPackage, groupAction, groupPlaceholder, onType, onDelete, onDuplicate, onColor, legend, currentColor, colors, onClear }: Props) {
   const [step, setStep] = useState<'root' | 'package' | 'type' | 'title' | 'color'>('root');
   const [color, setColor] = useState<string | null>(currentColor ?? null);
   const [legendLabel, setLegendLabel] = useState(() => legend.find((e) => e.color === currentColor)?.label ?? '');
@@ -101,8 +104,8 @@ export function SelectionMenu({ x, y, above, names, onPackage, onType, onDelete,
           <span className="px-2 text-xs text-slate-500 dark:text-slate-400">
             {names.length} élément{names.length > 1 ? 's' : ''}
           </span>
-          <button type="button" className={btn} onClick={() => setStep('package')} title="Regrouper dans un package (dossier UML)">
-            📁 Mettre dans un package
+          <button type="button" className={btn} onClick={() => setStep('package')} title={groupAction}>
+            📁 {groupAction}
           </button>
           <button type="button" className={btn} onClick={onDuplicate} title="Dupliquer (Ctrl+D) : copies décalées, avec leurs membres et leurs liaisons internes">
             ⧉ Dupliquer
@@ -110,8 +113,8 @@ export function SelectionMenu({ x, y, above, names, onPackage, onType, onDelete,
           <button type="button" className={btn} onClick={() => setStep('color')} title="Couleur de fond (et entrée de légende)">
             🎨 Couleur
           </button>
-          <button type="button" className={btn} onClick={() => setStep('type')} title="Encadrer comme un diagramme d’un type donné">
-            🏷️ Typer
+          <button type="button" className={btn} onClick={() => setStep('type')} title="Encadrer la sélection comme un diagramme d’un type donné (uc, ctx, pkg…)">
+            🏷️ Cadre de diagramme
           </button>
           <button type="button" className={`${btn} text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10`} onClick={onDelete} title="Supprimer les éléments sélectionnés (Suppr)">
             🗑️ Supprimer
@@ -217,12 +220,12 @@ export function SelectionMenu({ x, y, above, names, onPackage, onType, onDelete,
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Escape' && setStep('root')}
-            placeholder={step === 'package' ? 'Nom du package' : 'Titre du diagramme'}
-            aria-label={step === 'package' ? 'Nom du package' : 'Titre du diagramme'}
+            placeholder={step === 'package' ? groupPlaceholder : 'Titre du diagramme'}
+            aria-label={step === 'package' ? groupPlaceholder : 'Titre du diagramme'}
             className="h-8 w-52 rounded-md border border-slate-200 bg-white px-2 text-sm focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950"
           />
           <button type="submit" className="h-8 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500">
-            {step === 'package' ? 'Créer' : 'Typer'}
+            {step === 'package' ? 'Créer' : 'Encadrer'}
           </button>
           <button type="button" className={btn} onClick={() => setStep('root')}>
             Retour

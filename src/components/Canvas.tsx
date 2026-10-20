@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { RELATION_CHOICES, type RelationChange, type RelationRef } from '../core/edit';
+import type { RelationChange, RelationRef } from '../core/edit';
+import { changeForChoice, relationChoiceOf, targetPhrase, type RelationChoice, type Vocabulary } from '../core/vocabulary';
 import { GRID, boundsOf, computeScene, legendBox, snap } from '../core/layout';
 import type { SceneTheme } from '../core/theme';
 import type { Diagram, DiagramType, Group, Point, Positions, Relation, RelationKind } from '../core/types';
@@ -16,7 +17,9 @@ interface Props {
   onMove: (moves: Record<string, Point>, first: boolean) => void;
   onRelationChange: (ref: RelationRef, change: RelationChange) => void;
   onRelationDelete: (ref: RelationRef) => void;
-  onRelationAdd: (from: string, to: string, kind: RelationKind) => void;
+  onRelationAdd: (from: string, to: string, kind: RelationKind, label?: string) => void;
+  /** Vocabulaire du diagramme affiché (types de relation proposés, consignes). */
+  vocab: Vocabulary;
   /** Change à chaque import : le canevas recadre alors tout le diagramme. */
   fitKey?: number;
   /** Fin d'un glisser : l'application corrige un éventuel chevauchement. */
@@ -27,9 +30,13 @@ interface Props {
   onDuplicate?: (names: string[]) => string[];
   onColor?: (names: string[], color: string | null, label: string) => void;
   onCreatePackage?: (title: string, names: string[]) => void;
+  /** Consigne affichée sur un tableau vide (dépend du mode Code / Visuel). */
+  emptyHint?: string;
   onTypeSelection?: (type: DiagramType, title: string, names: string[]) => void;
   /** Prévient l'application de la classe cliquée (null : clic dans le vide). */
   onSelectClass?: (name: string | null) => void;
+  /** Élément sélectionné depuis le panneau Visuel (il est mis en évidence sur le diagramme). */
+  selectedName?: string | null;
   /** Vue ciblée active sur cette classe : les autres sont estompées. */
   focus?: string | null;
 }
@@ -55,7 +62,7 @@ type Drag =
 type LinkState =
   | { phase: 'drag'; from: string; origin: Point }
   | { phase: 'choose'; from: string; to: string | null; origin: Point; at: Point }
-  | { phase: 'target'; from: string; origin: Point; kind: RelationKind };
+  | { phase: 'target'; from: string; origin: Point; choice: RelationChoice };
 
 const MIN_K = 0.2;
 const MAX_K = 3;
@@ -70,12 +77,15 @@ export function Canvas({
   onRelationChange,
   onRelationDelete,
   onRelationAdd,
+  vocab,
   onSelectClass,
+  selectedName,
   onDrop,
   onDeleteNodes,
   onDuplicate,
   onColor,
   onCreatePackage,
+  emptyHint,
   onTypeSelection,
   fitKey = 0,
   focus,
@@ -85,6 +95,9 @@ export function Canvas({
   const didFit = useRef(false);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => {
+    if (selectedName !== undefined) setSelected(selectedName);
+  }, [selectedName]);
   const [selectedEdge, setSelectedEdge] = useState<number | null>(null);
   const [panning, setPanning] = useState(false);
   const [link, setLink] = useState<LinkState | null>(null);
@@ -125,23 +138,23 @@ export function Canvas({
 
   // --- Création de lien -----------------------------------------------------------------
 
-  const createLink = (from: string, to: string, kind: RelationKind) => {
-    onRelationAdd(from, to, kind);
+  const createLink = (from: string, to: string, choice: RelationChoice) => {
+    onRelationAdd(from, to, choice.kind, choice.stereotype);
     setLink(null);
   };
 
-  const pickForNewLink = (kind: RelationKind) => {
+  const pickForNewLink = (choice: RelationChoice) => {
     if (link?.phase !== 'choose') return;
-    if (link.to) createLink(link.from, link.to, kind);
+    if (link.to) createLink(link.from, link.to, choice);
     else {
-      setLink({ phase: 'target', from: link.from, origin: link.origin, kind });
+      setLink({ phase: 'target', from: link.from, origin: link.origin, choice });
       setCursor(link.origin);
     }
   };
 
   const onHandleDown = (name: string, at: Point, e: React.PointerEvent<SVGGElement>) => {
     if (link?.phase === 'target') {
-      createLink(link.from, name, link.kind);
+      createLink(link.from, name, link.choice);
       return;
     }
     setSelectedEdge(null);
@@ -172,7 +185,7 @@ export function Canvas({
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const n = Number(e.key);
-    const digit = Number.isInteger(n) && n >= 1 && n <= RELATION_CHOICES.length ? RELATION_CHOICES[n - 1].kind : null;
+    const digit = Number.isInteger(n) && n >= 1 && n <= vocab.relations.length ? vocab.relations[n - 1] : null;
 
     if (e.key === 'Escape' && (link || activeRef || selected2.size > 0)) {
       setLink(null);
@@ -184,7 +197,7 @@ export function Canvas({
       setSelection(new Set());
       setSelected(null);
     } else if (link?.phase === 'choose' && digit) pickForNewLink(digit);
-    else if (activeRef && digit) onRelationChange(activeRef, { kind: digit });
+    else if (activeRef && digit) onRelationChange(activeRef, changeForChoice(digit, activeEdge?.relation.label));
     else if (activeRef && (e.key === 'r' || e.key === 'R')) onRelationChange(activeRef, { reverse: true });
     else if (activeRef && (e.key === 'Delete' || e.key === 'Backspace')) {
       onRelationDelete(activeRef);
@@ -285,7 +298,7 @@ export function Canvas({
   const onBoxDown = (name: string, e: React.PointerEvent<SVGGElement>) => {
     e.stopPropagation();
     if (link?.phase === 'target') {
-      createLink(link.from, name, link.kind);
+      createLink(link.from, name, link.choice);
       return;
     }
     setLink(null);
@@ -430,7 +443,7 @@ export function Canvas({
   const highlighted =
     link?.phase === 'choose' ? link.to : link?.phase === 'drag' ? (hovered !== link.from ? hovered : null) : hovered;
 
-  const targetLabel = link?.phase === 'target' ? RELATION_CHOICES.find((c) => c.kind === link.kind)?.label : null;
+  const targetLabel = link?.phase === 'target' ? link.choice.label : null;
   const bounds = { w: svgRef.current?.clientWidth ?? 800, h: svgRef.current?.clientHeight ?? 600 };
   const gridSize = GRID * 4 * view.k;
   const isEmpty = diagram.classes.length === 0;
@@ -510,8 +523,9 @@ export function Canvas({
           bounds={bounds}
           from={activeRef.from}
           to={activeRef.to}
-          current={activeEdge.relation.kind}
-          onPick={(kind) => onRelationChange(activeRef, { kind })}
+          choices={vocab.relations}
+          current={relationChoiceOf(vocab, activeEdge.relation)}
+          onPick={(choice) => onRelationChange(activeRef, changeForChoice(choice, activeEdge.relation.label))}
           onReverse={() => onRelationChange(activeRef, { reverse: true })}
           onDelete={
             activeRef.via === 'member'
@@ -551,6 +565,8 @@ export function Canvas({
               setSelection(new Set());
             }}
             onDuplicate={() => duplicate(names)}
+            groupAction={vocab.group.action}
+            groupPlaceholder={vocab.group.placeholder}
             legend={diagram.style?.legend ?? []}
             colors={diagram.style?.colors ?? {}}
             currentColor={(() => {
@@ -570,18 +586,22 @@ export function Canvas({
 
       {/* Menu : création d'un lien depuis une poignée */}
       {link?.phase === 'choose' && (
-        <RelationPicker {...toScreen(link.at)} bounds={bounds} from={link.from} to={link.to} onPick={pickForNewLink} onClose={() => setLink(null)} />
+        <RelationPicker {...toScreen(link.at)} bounds={bounds} from={link.from} to={link.to} choices={vocab.relations} onPick={pickForNewLink} onClose={() => setLink(null)} />
       )}
 
       {link?.phase === 'target' && (
         <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1.5 text-xs text-white shadow-md">
-          {targetLabel} depuis <span className="font-mono">{link.from}</span> : cliquez sur la classe cible · Échap pour annuler
+          {targetLabel} depuis <span className="font-mono">{link.from}</span> : cliquez sur {targetPhrase(vocab)} · Échap pour annuler
         </div>
       )}
 
       {isEmpty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm" style={{ color: theme.muted }}>
-          Écrivez <code className="mx-1 rounded bg-black/5 px-1.5 py-0.5 font-mono dark:bg-white/10">class MaClasse</code> pour commencer
+          {emptyHint ?? (
+            <>
+              Écrivez <code className="mx-1 rounded bg-black/5 px-1.5 py-0.5 font-mono dark:bg-white/10">class MaClasse</code> pour commencer
+            </>
+          )}
         </div>
       )}
 
@@ -600,7 +620,7 @@ export function Canvas({
       </div>
 
       <p className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] lg:block" style={{ color: theme.muted }}>
-        Glisser : déplacer · Shift+clic ou Shift+glisser : sélection multiple · Poignée ◦ : nouveau lien · Ctrl+Z : annuler
+        Glisser : déplacer · Shift+clic ou Shift+glisser : sélection multiple · Poignée ◦ : nouvelle relation · Ctrl+Z : annuler
       </p>
     </div>
   );

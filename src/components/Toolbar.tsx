@@ -87,12 +87,12 @@ export function Toolbar(p: Props) {
       </div>
 
       <div className="flex items-center gap-1">
-        {/* Mode des liaisons : tout dans le code, ou réglées à la main dans un panneau dédié */}
-        <div role="radiogroup" aria-label="Mode des liaisons" className="mr-1 hidden rounded-lg bg-slate-100 p-0.5 md:flex dark:bg-slate-800">
+        {/* Mode d'édition : script (Code) ou construction à la souris (Visuel) — le script reste la référence */}
+        <div role="radiogroup" aria-label="Mode d’édition" className="mr-1 hidden rounded-lg bg-slate-100 p-0.5 md:flex dark:bg-slate-800">
           {(
             [
-              ['simple', 'Simplifié', 'Tout s’écrit dans le code, liaisons comprises (A --|> B). « extends » crée l’héritage tout seul.'],
-              ['custom', 'Personnalisé', 'Le code ne contient que les classes ; chaque liaison se règle à la main dans le panneau Liaisons.'],
+              ['simple', 'Code', 'Mode Code : le diagramme s’écrit sous forme de script, relations comprises — le plus rapide au clavier.'],
+              ['custom', 'Visuel', 'Mode Visuel : tout se construit avec des menus et des champs, sans écrire une ligne de code.'],
             ] as const
           ).map(([value, label, title]) => (
             <button
@@ -241,7 +241,7 @@ function ExportMenu({
           {item(
             <DownloadIcon />,
             'Projet X-UML (.json)',
-            many ? `Code et positions de ${n} tableau${n > 1 ? 'x' : ''}, pour le réimporter plus tard` : 'Le code et la position des classes, pour le réimporter plus tard',
+            many ? `Code et positions de ${n} tableau${n > 1 ? 'x' : ''}, pour le réimporter plus tard` : 'Le contenu et la disposition du tableau, pour le réimporter plus tard',
             onExportProject,
           )}
           {item(

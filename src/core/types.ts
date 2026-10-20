@@ -25,6 +25,8 @@ export interface ClassNode {
   line: number;
   /** Créé seulement parce qu'il est cité (liaison, groupe) : pas de déclaration propre. */
   implicit?: boolean;
+  /** Objet : classe dont il est une instance (object ihm : EcranCommande). */
+  classifier?: string;
 }
 
 /** Types de diagrammes qu'un cadre peut porter (« typer » une sélection). */

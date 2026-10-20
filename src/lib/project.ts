@@ -1,4 +1,4 @@
-import type { Point, Positions } from '../core/types';
+import type { DiagramType, Point, Positions } from '../core/types';
 
 /*
  * Projet X-UML : plusieurs tableaux blancs (onglets). Chaque tableau a son propre script
@@ -11,6 +11,8 @@ export interface Board {
   name: string;
   source: string;
   positions: Positions;
+  /** Type de diagramme choisi pour ce tableau (vocabulaire, éléments proposés). Absent : déduit du contenu. */
+  type?: DiagramType;
 }
 
 export interface Project {
@@ -20,9 +22,11 @@ export interface Project {
 let counter = 0;
 export const newBoardId = (): string => `b${Date.now().toString(36)}${(counter++).toString(36)}`;
 
-export function newBoard(name: string, source = '', positions: Positions = {}): Board {
-  return { id: newBoardId(), name, source, positions };
+export function newBoard(name: string, source = '', positions: Positions = {}, type?: DiagramType): Board {
+  return { id: newBoardId(), name, source, positions, ...(type ? { type } : {}) };
 }
+
+const TYPES: DiagramType[] = ['class', 'usecase', 'context', 'package', 'communication'];
 
 const isPoint = (v: unknown): v is Point =>
   typeof v === 'object' && v !== null && Number.isFinite((v as Point).x) && Number.isFinite((v as Point).y);
@@ -45,6 +49,7 @@ export function cleanBoard(raw: unknown, fallbackName: string): Board | null {
     name: typeof b.name === 'string' && b.name.trim() ? b.name.trim() : fallbackName,
     source: b.source,
     positions: cleanPositions(b.positions),
+    ...(TYPES.includes(b.type as DiagramType) ? { type: b.type } : {}),
   };
 }
 
