@@ -533,12 +533,14 @@ export function Canvas({
         const bottom = toScreen({ x: b.x, y: b.y + b.h });
         const names = [...selected2];
         // Au-dessus de la sélection (sans jamais la masquer) ; en dessous s'il n'y a pas la place.
-        const above = top.y - 64;
+        // Ancré par le bas (il grandit vers le haut, quelle que soit l'étape) : il ne masque jamais la sélection.
+        const above = top.y - 12 >= 140;
         return (
           <SelectionMenu
             key={names.join('|')}
             x={clamp(top.x, 240, bounds.w - 240)}
-            y={above >= 8 ? above : Math.min(bottom.y + 12, bounds.h - 60)}
+            y={above ? top.y - 12 : Math.min(bottom.y + 12, bounds.h - 60)}
+            above={above}
             names={names}
             onPackage={(title) => {
               onCreatePackage?.(title, names);
@@ -550,14 +552,13 @@ export function Canvas({
             }}
             onDuplicate={() => duplicate(names)}
             legend={diagram.style?.legend ?? []}
+            colors={diagram.style?.colors ?? {}}
             currentColor={(() => {
               const cs = new Set(names.map((n) => diagram.style?.colors[n]));
               return cs.size === 1 ? [...cs][0] : undefined;
             })()}
-            onColor={(color, label) => {
-              onColor?.(names, color, label);
-              setSelection(new Set());
-            }}
+            // La sélection reste active : on peut essayer une autre couleur, l'aperçu est immédiat.
+            onColor={(color, label) => onColor?.(names, color, label)}
             onDelete={() => {
               onDeleteNodes?.(names);
               setSelection(new Set());

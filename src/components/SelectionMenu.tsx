@@ -14,6 +14,8 @@ export const DIAGRAM_TYPES: { type: DiagramType; label: string; tag: string }[] 
 interface Props {
   x: number;
   y: number;
+  /** Vrai : le menu est posé au-dessus de la sélection (y = son bord bas). */
+  above?: boolean;
   names: string[];
   onPackage: (title: string) => void;
   onType: (type: DiagramType, title: string) => void;
@@ -25,6 +27,8 @@ interface Props {
   legend: LegendEntry[];
   /** Couleur actuelle si toute la sélection a la même. */
   currentColor?: string;
+  /** Couleur de chaque élément du tableau (pour savoir si un libellé sert encore ailleurs). */
+  colors: Record<string, string>;
   onClear: () => void;
 }
 
@@ -32,16 +36,41 @@ interface Props {
  * Menu flottant au-dessus d'une sélection multiple : tout ce qu'on peut faire avec,
  * sans quitter le diagramme ni écrire de code.
  */
-export function SelectionMenu({ x, y, names, onPackage, onType, onDelete, onDuplicate, onColor, legend, currentColor, onClear }: Props) {
+export function SelectionMenu({ x, y, above, names, onPackage, onType, onDelete, onDuplicate, onColor, legend, currentColor, colors, onClear }: Props) {
   const [step, setStep] = useState<'root' | 'package' | 'type' | 'title' | 'color'>('root');
-  const [color, setColor] = useState(currentColor ?? NAMED_COLORS.bleu);
+  const [color, setColor] = useState<string | null>(currentColor ?? null);
   const [legendLabel, setLegendLabel] = useState(() => legend.find((e) => e.color === currentColor)?.label ?? '');
+  /** Un clic sur une couleur l'applique tout de suite : on voit le résultat, sans bouton « Appliquer ». */
   const pickColor = (c: string) => {
+    // Une couleur déjà dans la légende reprend son libellé. Sinon on garde le libellé tapé,
+    // sauf s'il appartenait à une autre couleur (il venait d'être pré-rempli, pas choisi).
+    // (Le libellé suit la sélection, sauf s'il désigne encore d'autres éléments, d'une autre couleur.)
+    const own = legend.find((e) => e.color === c)?.label;
+    const typed = legendLabel.trim();
+    const usedByOthers = Object.entries(colors).some(
+      ([n, col]) => !names.includes(n) && col !== c && legend.some((e) => e.color === col && e.label === typed),
+    );
+    const label = own ?? (usedByOthers ? '' : typed);
     setColor(c);
-    // Une couleur déjà présente dans la légende reprend son libellé : un clic suffit pour « ranger » un élément.
-    const known = legend.find((e) => e.color === c);
-    if (known) setLegendLabel(known.label);
+    setLegendLabel(label);
+    onColor(c, label);
   };
+  /** Le libellé est enregistré quand on quitte le champ (ou avec Entrée). */
+  const commitLabel = () => {
+    if (color && legendLabel.trim() !== (legend.find((e) => e.color === color)?.label ?? '')) onColor(color, legendLabel);
+  };
+  // Sélecteur de couleur libre : appliqué à la fermeture du sélecteur (événement « change »),
+  // pas à chaque mouvement de la souris (sinon chaque nuance survolée remplirait l'historique).
+  const customRef = useRef<HTMLInputElement>(null);
+  const pickRef = useRef(pickColor);
+  pickRef.current = pickColor;
+  useEffect(() => {
+    const el = customRef.current;
+    if (!el) return;
+    const f = () => pickRef.current(el.value);
+    el.addEventListener('change', f);
+    return () => el.removeEventListener('change', f);
+  }, [step]);
   const [type, setType] = useState<DiagramType>('class');
   const [title, setTitle] = useState('');
   const input = useRef<HTMLInputElement>(null);
@@ -64,7 +93,7 @@ export function SelectionMenu({ x, y, names, onPackage, onType, onDelete, onDupl
       role="toolbar"
       aria-label="Actions sur la sélection"
       onPointerDown={(e) => e.stopPropagation()}
-      className="absolute z-30 -translate-x-1/2 whitespace-nowrap rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      className={`absolute z-30 -translate-x-1/2 ${above ? '-translate-y-full' : ''} whitespace-nowrap rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900`}
       style={{ left: x, top: y }}
     >
       {step === 'root' && (
@@ -115,13 +144,7 @@ export function SelectionMenu({ x, y, names, onPackage, onType, onDelete, onDupl
       )}
 
       {step === 'color' && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onColor(color, legendLabel);
-          }}
-          className="flex w-[324px] flex-col gap-2 p-1.5"
-        >
+        <div className="flex w-[324px] flex-col gap-2 p-1.5">
           <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Couleur">
             {Object.entries(NAMED_COLORS).map(([name, hex]) => (
               <button
@@ -132,23 +155,34 @@ export function SelectionMenu({ x, y, names, onPackage, onType, onDelete, onDupl
                 aria-label={name}
                 title={name}
                 onClick={() => pickColor(hex)}
-                className={`h-6 w-6 rounded-md border ${color === hex ? 'border-indigo-600 ring-2 ring-indigo-400' : 'border-slate-300 dark:border-slate-600'}`}
+                className={`h-6 w-6 rounded-md border transition-transform hover:scale-110 ${color === hex ? 'border-indigo-600 ring-2 ring-indigo-400' : 'border-slate-300 dark:border-slate-600'}`}
                 style={{ background: hex }}
               />
             ))}
-            <label title="Autre couleur" className="relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-400 text-xs text-slate-500">
-              +
-              <input type="color" value={color} onChange={(e) => pickColor(e.target.value)} aria-label="Autre couleur" className="absolute inset-0 cursor-pointer opacity-0" />
+            <label
+              title="Autre couleur"
+              className={`relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border text-xs ${
+                color && !Object.values(NAMED_COLORS).includes(color) ? 'border-indigo-600 ring-2 ring-indigo-400' : 'border-dashed border-slate-400 text-slate-500'
+              }`}
+              style={color && !Object.values(NAMED_COLORS).includes(color) ? { background: color } : undefined}
+            >
+              {color && !Object.values(NAMED_COLORS).includes(color) ? '' : '+'}
+              <input ref={customRef} type="color" defaultValue={color ?? '#93c5fd'} aria-label="Autre couleur" className="absolute inset-0 cursor-pointer opacity-0" />
             </label>
           </div>
           <input
             value={legendLabel}
+            disabled={!color}
             onChange={(e) => setLegendLabel(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && setStep('root')}
-            placeholder="Légende (facultatif) : ex. Métier"
+            onBlur={commitLabel}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitLabel();
+              if (e.key === 'Escape') setStep('root');
+            }}
+            placeholder={color ? 'Nom dans la légende (facultatif)' : 'Choisis une couleur'}
             aria-label="Légende de la couleur"
             list="xuml-legend-labels"
-            className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950"
+            className="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm focus:border-indigo-400 focus:outline-none disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950"
           />
           <datalist id="xuml-legend-labels">
             {legend.map((e) => (
@@ -156,19 +190,24 @@ export function SelectionMenu({ x, y, names, onPackage, onType, onDelete, onDupl
             ))}
           </datalist>
           <div className="flex items-center gap-1">
-            <button type="submit" className="h-8 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500">
-              Appliquer
-            </button>
-            {currentColor && (
-              <button type="button" className={btn} onClick={() => onColor(null, '')}>
+            {color && (
+              <button
+                type="button"
+                className={btn}
+                onClick={() => {
+                  setColor(null);
+                  setLegendLabel('');
+                  onColor(null, '');
+                }}
+              >
                 Sans couleur
               </button>
             )}
-            <button type="button" className={btn} onClick={() => setStep('root')}>
-              Retour
+            <button type="button" className={`${btn} ml-auto`} onClick={onClear}>
+              Terminé
             </button>
           </div>
-        </form>
+        </div>
       )}
 
       {(step === 'package' || step === 'title') && (
