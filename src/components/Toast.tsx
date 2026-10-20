@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { CloseIcon } from './Icons';
 
 export interface ToastData {
   id: number;
@@ -37,7 +38,7 @@ export function Toast({ toast, onClose }: { toast: ToastData | null; onClose: ()
         </button>
       )}
       <button type="button" onClick={onClose} aria-label="Fermer" className="opacity-60 hover:opacity-100">
-        ✕
+        <CloseIcon size={12} />
       </button>
     </div>
   );

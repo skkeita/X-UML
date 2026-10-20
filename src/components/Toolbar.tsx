@@ -280,7 +280,7 @@ function Switch({ label, hint, checked, disabled, onChange }: { label: string; h
   );
 }
 
-/** Menu « Style » : apparence du tableau affiché. Les couleurs se posent sur une sélection (🎨). */
+/** Menu « Style » : apparence du tableau affiché. Les couleurs se posent sur une sélection (menu « Couleur »). */
 function StyleMenu(p: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -320,7 +320,7 @@ function StyleMenu(p: Props) {
           />
           <div className="mt-1 border-t border-slate-100 px-2.5 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">
             <p>
-              <b className="font-medium text-slate-700 dark:text-slate-200">Couleurs :</b> Shift+clic sur des éléments → 🎨 Couleur.
+              <b className="font-medium text-slate-700 dark:text-slate-200">Couleurs :</b> Shift+clic sur des éléments, puis « Couleur ».
             </p>
             <p className="mt-1">
               Ou dans le code : <code className="rounded bg-slate-100 px-1 font-mono text-[11px] dark:bg-slate-800">color A, B bleu "Métier"</code>

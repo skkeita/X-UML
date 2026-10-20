@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 
 // Icônes minimalistes (trait 1.75) : zéro dépendance, héritent de currentColor.
-const Svg = ({ children }: { children: ReactNode }) => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+const Svg = ({ children, size = 16 }: { children: ReactNode; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {children}
   </svg>
 );
@@ -71,6 +71,68 @@ export const CodeIcon = () => (
 );
 export const PaletteIcon = () => (
   <Svg>
+    <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.8-.5-1.1.2-2.2 1.4-2.2H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10z" />
+    <circle cx="7.5" cy="11" r="1" />
+    <circle cx="10.5" cy="7.5" r="1" />
+    <circle cx="15" cy="7.5" r="1" />
+  </Svg>
+);
+
+/* Icônes des menus contextuels (14 px) : remplacent les émojis, rendu identique sur tous les systèmes. */
+type IconProps = { size?: number };
+export const FolderIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  </Svg>
+);
+export const SystemIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 9h18" />
+  </Svg>
+);
+export const FrameIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <rect x="3" y="3" width="18" height="18" rx="1" />
+    <path d="M3 9h7l2-2V3" />
+  </Svg>
+);
+export const PencilIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 20h4L19 9l-4-4L4 16z" />
+    <path d="M13.5 6.5l4 4" />
+  </Svg>
+);
+export const UngroupIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <rect x="3" y="3" width="8" height="8" rx="1" />
+    <rect x="13" y="13" width="8" height="8" rx="1" />
+    <path d="M15 3h6v6M3 15v6h6" strokeDasharray="2 2.5" />
+  </Svg>
+);
+export const CopyIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <rect x="8" y="8" width="13" height="13" rx="2" />
+    <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+  </Svg>
+);
+export const TrashIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+  </Svg>
+);
+export const CloseIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </Svg>
+);
+export const SwapIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 8h14l-4-4M20 16H6l4 4" />
+  </Svg>
+);
+export const PaletteSmallIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
     <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.8-.5-1.1.2-2.2 1.4-2.2H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10z" />
     <circle cx="7.5" cy="11" r="1" />
     <circle cx="10.5" cy="7.5" r="1" />

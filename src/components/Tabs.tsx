@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { TEMPLATES, type Template } from '../core/templates';
 import type { Board } from '../lib/project';
+import { CloseIcon } from './Icons';
 
 interface Props {
   boards: Board[];
@@ -95,7 +96,7 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
                   title="Fermer ce tableau (Ctrl+Z pour annuler)"
                   className={`rounded px-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 ${active ? '' : 'opacity-0 group-hover:opacity-100'}`}
                 >
-                  ✕
+                  <CloseIcon size={12} />
                 </button>
               )}
             </div>

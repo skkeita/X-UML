@@ -1,4 +1,5 @@
 import type { RelationKind } from '../core/types';
+import { CloseIcon, SwapIcon, TrashIcon } from './Icons';
 import type { RelationChoice } from '../core/vocabulary';
 
 interface Props {
@@ -76,7 +77,7 @@ export function RelationPicker({ x, y, bounds, from, to, choices, current, onPic
           </span>
         </span>
         <button type="button" onClick={onClose} title="Fermer (Échap)" className="rounded px-1 hover:bg-slate-100 dark:hover:bg-slate-800">
-          ✕
+          <CloseIcon />
         </button>
       </div>
 
@@ -112,15 +113,15 @@ export function RelationPicker({ x, y, bounds, from, to, choices, current, onPic
       {(onReverse || onDelete) && (
       <div className="mt-1 flex gap-1 border-t border-slate-200 pt-1.5 dark:border-slate-700">
         <button type="button" onClick={onReverse} title="Inverser le sens (R)" className="flex-1 rounded-md px-2 py-1.5 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
-          ⇄ Inverser
+          <span className="inline-flex items-center gap-1.5"><SwapIcon /> Inverser</span>
         </button>
         {onDelete ? (
           <button type="button" onClick={onDelete} title="Supprimer la relation (Suppr)" className="flex-1 rounded-md px-2 py-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">
-            Supprimer
+            <span className="inline-flex items-center gap-1.5"><TrashIcon /> Supprimer</span>
           </button>
         ) : (
           <span className="flex-1 self-center px-2 text-center text-[10.5px] leading-tight text-slate-400" title="Relation déduite du type d’un attribut ou d’une opération">
-            ⚡ déduite du code
+            déduite du code
           </span>
         )}
       </div>
