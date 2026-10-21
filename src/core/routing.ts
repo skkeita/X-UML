@@ -160,6 +160,10 @@ function simplify(points: Point[]): Point[] {
     const colinear = (Math.abs(a.x - b.x) < 0.01 && Math.abs(b.x - c.x) < 0.01) || (Math.abs(a.y - b.y) < 0.01 && Math.abs(b.y - c.y) < 0.01);
     if (colinear) out.splice(i, 1);
   }
+  // Deux boîtes exactement superposées : départ = arrivée. On garde un segment (même nul) :
+  // tout le reste du calcul suppose au moins deux points.
+  if (out.length === 1) out.push({ ...out[0] });
+  if (out.length === 0 && points.length) out.push({ ...points[0] }, { ...points[points.length - 1] });
   return out;
 }
 
@@ -685,7 +689,37 @@ export interface RouteOptions {
   shapes?: Record<string, 'ellipse' | 'actor'>;
 }
 
+/**
+ * Point d'entrée sûr : quelle que soit la disposition (boîtes superposées pendant un glisser…),
+ * on renvoie toujours un tracé. Si le routage fin échoue, chaque lien est tracé simplement
+ * (coude unique entre les centres) au lieu de faire planter l'affichage.
+ */
 export function computeEdges(relations: Relation[], boxes: Record<string, Rect>, opts: RouteOptions = {}): EdgeGeometry[] {
+  try {
+    return routeEdges(relations, boxes, opts);
+  } catch (err) {
+    if (typeof console !== 'undefined') console.warn('[X-UML] routage simplifié :', err);
+    return fallbackEdges(relations, boxes);
+  }
+}
+
+/** Tracé de secours : un coude entre les centres des deux boîtes, toujours valide. */
+export function fallbackEdges(relations: Relation[], boxes: Record<string, Rect>): EdgeGeometry[] {
+  const out: EdgeGeometry[] = [];
+  for (const r of relations) {
+    const a = boxes[r.from];
+    const b = boxes[r.to];
+    if (!a || !b) continue;
+    const pa = { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+    const pb = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+    const points = Math.abs(pa.x - pb.x) < 1 || Math.abs(pa.y - pb.y) < 1 ? [pa, pb] : [pa, { x: pb.x, y: pa.y }, pb];
+    out.push({ relation: r, d: toPath(points), points, label: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 8 } });
+  }
+  return out;
+}
+
+/** Routage complet (orthogonal, sans traverser les classes, lisible). Peut lever une erreur : passer par computeEdges. */
+export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, opts: RouteOptions = {}): EdgeGeometry[] {
   const frames = opts.frames ?? new Set<string>();
   /** Seuls les éléments (pas les cadres) bloquent le passage des liens. */
   const solid = Object.entries(boxes)

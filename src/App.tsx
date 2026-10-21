@@ -13,6 +13,8 @@ import { parse } from './core/parser';
 import { VOCABULARIES, inferDiagramType, summarize, type ElementKind } from './core/vocabulary';
 import { addElement, renameElement, setElementKind, setGroupTitle, setElementLabel, setGroupOf, setMembers, setObjectType, setParents, type MemberDraft } from './core/modelEdit';
 import { Inspector } from './components/Inspector';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { FeaturesDialog } from './components/FeaturesDialog';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
@@ -521,9 +523,25 @@ export default function App() {
     if (f) void importFile(f);
   };
 
+  // Catalogue des fonctionnalités : bouton de la barre du haut ou F1 (au lieu de l'aide du navigateur).
+  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const closeFeatures = useCallback(() => setFeaturesOpen(false), []);
+  const featuresOpenRef = useRef(false);
+  featuresOpenRef.current = featuresOpen;
+  useEffect(() => {
+    const onF1 = (e: KeyboardEvent) => {
+      if (e.key !== 'F1') return;
+      e.preventDefault();
+      setFeaturesOpen((o) => !o);
+    };
+    window.addEventListener('keydown', onF1);
+    return () => window.removeEventListener('keydown', onF1);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (featuresOpenRef.current) return; // le catalogue est ouvert : Ctrl+Z… agissent sur sa recherche
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) undo();
       else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
@@ -668,6 +686,7 @@ export default function App() {
         canRedo={history.canRedo}
         relationMode={relationMode}
         onRelationModeChange={setRelationMode}
+        onShowFeatures={() => setFeaturesOpen(true)}
         corners={diagram.style?.corners ?? 'rounded'}
         onCornersChange={(c) => editSource((src) => setCorners(src, c))}
         legendCount={diagram.style?.legend.length ?? 0}
@@ -679,6 +698,7 @@ export default function App() {
         leftOpen={editorOpen}
         left={editorPanel}
         right={
+          <ErrorBoundary resetKey={`${active.id}|${source}|${JSON.stringify(stored)}`} onUndo={undo}>
           <Canvas
             diagram={diagram}
             positions={positions}
@@ -707,6 +727,7 @@ export default function App() {
             }
             focus={focusActive ? focusName : null}
           />
+          </ErrorBoundary>
         }
       />
       {dragOver && (
@@ -715,6 +736,7 @@ export default function App() {
         </div>
       )}
       <Toast toast={toast} onClose={closeToast} />
+      {featuresOpen && <FeaturesDialog onClose={closeFeatures} />}
     </div>
   );
 }
