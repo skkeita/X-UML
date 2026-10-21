@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
-import { CodeIcon, DownloadIcon, ImageIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
+import { BookIcon, CodeIcon, DownloadIcon, ImageIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -24,6 +24,8 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   relationMode: 'simple' | 'custom';
+  /** Ouvre le catalogue des fonctionnalités (F1). */
+  onShowFeatures: () => void;
   /** Apparence du tableau affiché (écrite dans son code). */
   corners: 'rounded' | 'square';
   onCornersChange: (c: 'rounded' | 'square') => void;
@@ -126,6 +128,10 @@ export function Toolbar(p: Props) {
           <span className="hidden sm:inline">Importer</span>
         </Button>
         <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportCode={p.onExportCode} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
+        <Button onClick={p.onShowFeatures} title="Toutes les fonctionnalités et les raccourcis (F1)">
+          <BookIcon />
+          <span className="hidden xl:inline">Fonctionnalités</span>
+        </Button>
         <Button onClick={p.onToggleTheme} title={p.theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
           {p.theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </Button>

@@ -139,3 +139,9 @@ export const PaletteSmallIcon = ({ size = 14 }: IconProps) => (
     <circle cx="15" cy="7.5" r="1" />
   </Svg>
 );
+export const BookIcon = () => (
+  <Svg>
+    <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" />
+    <path d="M4 21V5M8 7h7M8 11h7" />
+  </Svg>
+);
