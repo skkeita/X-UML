@@ -651,13 +651,18 @@ export function Canvas({
         onPointerCancel={onPointerCancel}
         onDoubleClick={onDoubleClick}
       >
-        {/* Grille de points : repère visuel de l'aimantation, suit pan et zoom */}
+        {/* Papier millimétré : trame fine (aimantation) et trait plus marqué toutes les 4 cases.
+            Repère de la planche à dessin ; il suit le déplacement et le zoom. */}
         <defs>
           <pattern id="xuml-grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse" x={view.x} y={view.y}>
-            <circle cx={1} cy={1} r={1} fill={theme.grid} />
+            <path d={`M ${gridSize} 0 H 0 V ${gridSize}`} fill="none" stroke={theme.grid} strokeOpacity={0.32} strokeWidth={1} />
+          </pattern>
+          <pattern id="xuml-grid-major" width={gridSize * 4} height={gridSize * 4} patternUnits="userSpaceOnUse" x={view.x} y={view.y}>
+            <path d={`M ${gridSize * 4} 0 H 0 V ${gridSize * 4}`} fill="none" stroke={theme.grid} strokeOpacity={0.7} strokeWidth={1} />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#xuml-grid)" />
+        <rect width="100%" height="100%" fill="url(#xuml-grid-major)" />
 
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
           <DiagramScene
@@ -952,9 +957,13 @@ export function Canvas({
         </button>
       </div>
 
-      <p className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] lg:block" style={{ color: theme.muted }}>
-        Glisser : déplacer · Shift+clic ou Shift+glisser : sélection multiple · Poignée ronde : nouvelle relation · Ctrl+Z : annuler
-      </p>
+      {/* Aide discrète : les gestes de base, le reste est dans « Fonctionnalités » (F1) */}
+      <ul className="pointer-events-none absolute bottom-3 left-3 hidden gap-4 text-[11px] lg:flex" style={{ color: theme.muted }}>
+        <li>Glisser : déplacer</li>
+        <li>Shift+clic : sélection multiple</li>
+        <li>Poignée ronde : nouvelle relation</li>
+        <li>F1 : toutes les fonctionnalités</li>
+      </ul>
     </div>
   );
 }

@@ -45,7 +45,7 @@ interface Props extends InspectorActions {
 
 const FIELD =
   'h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
-const LABEL = 'mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
+const LABEL = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300';
 const VISIBILITY: { v: Visibility; label: string }[] = [
   { v: '+', label: '+ public' },
   { v: '-', label: '- privé' },
@@ -149,7 +149,7 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
   return (
     <section className="border-b border-slate-100 px-3 py-3 dark:border-slate-800/80">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h3>
+        <h3 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
         {aside}
       </div>
       {children}

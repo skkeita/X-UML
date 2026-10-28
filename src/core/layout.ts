@@ -7,7 +7,7 @@ import type { ClassNode, Diagram, Group, LegendEntry, Member, Point, Positions, 
 
 export const GRID = 10;
 export const FONT_SIZE = 12;
-export const FONT_FAMILY = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+export const FONT_FAMILY = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 export const ROW_H = 20;
 const CHAR_W = 7.4; // largeur moyenne d'un caractère monospace à 12 px
 const PAD_X = 14;

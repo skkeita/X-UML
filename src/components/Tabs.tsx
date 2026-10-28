@@ -62,10 +62,11 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
                 setDraft(b.name);
               }}
               title="Double-clic pour renommer"
-              className={`group flex h-8 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-3 text-xs ${
+              // Onglet actif : la feuille au premier plan, repérée par un filet cobalt (comme un onglet de classeur).
+              className={`group -mb-px flex h-8 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-3 text-[13px] ${
                 active
-                  ? 'border-slate-200 bg-white font-medium text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white'
-                  : 'border-transparent text-slate-500 hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60'
+                  ? 'border-slate-200 border-t-2 border-t-indigo-600 bg-white font-medium text-slate-900 dark:border-slate-700 dark:border-t-indigo-400 dark:bg-slate-950 dark:text-white'
+                  : 'border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60'
               }`}
             >
               {editing === b.id ? (

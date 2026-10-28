@@ -251,7 +251,7 @@ export function relationChoiceOf(v: Vocabulary, r: Pick<Relation, 'kind' | 'labe
 export const relationLabel = (v: Vocabulary, r: Pick<Relation, 'kind' | 'label'>): string => relationChoiceOf(v, r)?.label ?? r.kind;
 
 /**
- * Résumé du contenu, avec les bons mots : « 2 acteurs · 5 cas d’utilisation · 6 relations ».
+ * Résumé du contenu, avec les bons mots : « 2 acteurs, 5 cas d’utilisation, 6 relations ».
  */
 export function summarize(v: Vocabulary, diagram: Diagram): string {
   const counts = new Map<ElementKind, number>();
@@ -267,7 +267,7 @@ export function summarize(v: Vocabulary, diagram: Diagram): string {
   const rels = diagram.relations.length;
   const rel = v.relation;
   parts.push(`${rels} ${rel}${rels > 1 ? 's' : ''}`);
-  return parts.join(' · ');
+  return parts.join(', ');
 }
 
 const STEREOTYPE = /^<<[^<>]+>>$/;

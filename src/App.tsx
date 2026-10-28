@@ -673,7 +673,7 @@ export default function App() {
       ) : (
         <p>
           {summarize(vocab, diagram)}
-          {diagram.groups?.length ? ` · ${diagram.groups.length} cadre${diagram.groups.length > 1 ? 's' : ''}` : ''}
+          {diagram.groups?.length ? `, ${diagram.groups.length} cadre${diagram.groups.length > 1 ? 's' : ''}` : ''}
         </p>
       )}
     </footer>

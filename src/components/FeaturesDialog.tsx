@@ -149,7 +149,7 @@ export function FeaturesDialog({ onClose }: { onClose: () => void }) {
             )}
             {sections.map((s) => (
               <section key={s.id} id={`feat-${s.id}`} className="mb-6 scroll-mt-2">
-                <h3 className="mb-1 text-[13px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">{s.title}</h3>
+                <h3 className="mb-1 text-[15px] font-semibold text-slate-900 dark:text-white">{s.title}</h3>
                 {s.intro && !query.trim() && <p className="mb-2 text-[13px] text-slate-500 dark:text-slate-400">{s.intro}</p>}
                 <ul className="grid gap-2 lg:grid-cols-2">
                   {s.items.map((f) => (
@@ -160,7 +160,7 @@ export function FeaturesDialog({ onClose }: { onClose: () => void }) {
             ))}
             {showShortcuts && (
               <section id="feat-raccourcis" className="mb-4 scroll-mt-2">
-                <h3 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Raccourcis clavier</h3>
+                <h3 className="mb-2 text-[15px] font-semibold text-slate-900 dark:text-white">Raccourcis clavier</h3>
                 <table className="w-full text-sm">
                   <tbody>
                     {SHORTCUTS.map((sc) => (
