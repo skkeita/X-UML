@@ -31,6 +31,8 @@ interface Props {
   selected?: string | null;
   /** Ligne source de la relation sélectionnée (identifiant stable d'un lien). */
   selectedEdge?: number | null;
+  /** Relations sélectionnées ensemble (Shift+clic), repérées par leur ligne. */
+  selectedEdges?: Set<number>;
   onBoxPointerDown?: (name: string, e: ReactPointerEvent<SVGGElement>) => void;
   onEdgePointerDown?: (relation: Relation, e: ReactPointerEvent<SVGGElement>) => void;
   /** Géométrie déjà calculée par l'appelant (le routage est coûteux : on évite de le refaire). */
@@ -337,6 +339,7 @@ export function DiagramScene({
   theme,
   selected,
   selectedEdge,
+  selectedEdges,
   highlighted,
   focus,
   edges: precomputed,
@@ -394,7 +397,7 @@ export function DiagramScene({
       <g fill="none" stroke={theme.edge} strokeWidth={1.4}>
         {edges.map(({ relation, d, label, points, inset }, i) => {
           const m = markerFor(relation.kind);
-          const isSelected = selectedEdge === relation.line;
+          const isSelected = selectedEdge === relation.line || !!selectedEdges?.has(relation.line);
           return (
             <g
               key={i}

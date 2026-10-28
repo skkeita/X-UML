@@ -19,7 +19,7 @@ import { FeaturesDialog } from './components/FeaturesDialog';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
-import type { Diagram, DiagramType, Group, Point, RelationKind } from './core/types';
+import type { Diagram, DiagramType, Group, Point, Relation, RelationKind } from './core/types';
 import { useAutosave } from './hooks/useAutosave';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useHistory } from './hooks/useHistory';
@@ -214,6 +214,28 @@ export default function App() {
     [editSource],
   );
   const handleRelationDelete = useCallback((ref: RelationRef) => editSource((src) => deleteRelation(src, ref)), [editSource]);
+  /**
+   * Plusieurs relations à la fois (sélection Shift+clic) : une seule étape d'annulation.
+   * On part du bas du script : modifier une ligne ne décale jamais celles qui restent à traiter.
+   */
+  const handleRelationsChange = useCallback(
+    (refs: RelationRef[], change: RelationChange | ((r: Relation) => RelationChange)) =>
+      editSource((src) => {
+        let out = src;
+        for (const ref of [...refs].sort((a, b) => b.line - a.line)) {
+          const rel = diagram.relations.find((r) => r.line === ref.line && r.from === ref.from && r.to === ref.to);
+          if (!rel) continue;
+          out = updateRelation(out, ref, typeof change === 'function' ? change(rel) : change);
+        }
+        return out;
+      }),
+    [editSource, diagram.relations],
+  );
+  const handleRelationsDelete = useCallback(
+    (refs: RelationRef[]) =>
+      editSource((src) => [...refs].sort((a, b) => b.line - a.line).reduce((out, ref) => deleteRelation(out, ref), src)),
+    [editSource],
+  );
   /**
    * Supprime seulement les éléments visés : les autres gardent exactement leur place
    * (leurs positions actuelles sont figées, même celles calculées automatiquement).
@@ -775,6 +797,8 @@ export default function App() {
             onMove={handleMove}
             onRelationChange={handleRelationChange}
             onRelationDelete={handleRelationDelete}
+            onRelationsChange={handleRelationsChange}
+            onRelationsDelete={handleRelationsDelete}
             onRelationAdd={handleRelationAdd}
             onSelectClass={handleSelectClass}
             selectedName={relationMode === 'custom' ? selectedClass : undefined}

@@ -8,6 +8,7 @@ import type { Diagram, DiagramType, Group, Point, Positions, Relation, RelationK
 import { DiagramScene } from './DiagramScene';
 import { FitIcon } from './Icons';
 import { RelationPicker } from './RelationPicker';
+import { RelationSelectionMenu } from './RelationSelectionMenu';
 import { SelectionMenu } from './SelectionMenu';
 
 interface Props {
@@ -17,6 +18,9 @@ interface Props {
   /** Nouvelles positions ; `first` = premier mouvement d'un glisser (ouvre une nouvelle étape d'annulation). */
   onMove: (moves: Record<string, Point>, first: boolean) => void;
   onRelationChange: (ref: RelationRef, change: RelationChange) => void;
+  /** Même modification appliquée à plusieurs relations (une seule étape d'annulation). */
+  onRelationsChange?: (refs: RelationRef[], change: RelationChange | ((r: Relation) => RelationChange)) => void;
+  onRelationsDelete?: (refs: RelationRef[]) => void;
   onRelationDelete: (ref: RelationRef) => void;
   onRelationAdd: (from: string, to: string, kind: RelationKind, label?: string) => void;
   /** Vocabulaire du diagramme affiché (types de relation proposés, consignes). */
@@ -89,6 +93,8 @@ export function Canvas({
   theme,
   onMove,
   onRelationChange,
+  onRelationsChange,
+  onRelationsDelete,
   onRelationDelete,
   onRelationAdd,
   vocab,
@@ -115,6 +121,8 @@ export function Canvas({
   const didFit = useRef(false);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [selected, setSelected] = useState<string | null>(null);
+  /** Relations sélectionnées ensemble (Shift+clic), repérées par leur ligne dans le script. */
+  const [edgeSelection, setEdgeSelection] = useState<Set<number>>(new Set());
   /** Groupe dont on a cliqué le titre : le menu propose alors Renommer / Dégrouper. */
   const [activeFrame, setActiveFrame] = useState<string | null>(null);
   /** Renommage en place (double-clic sur un élément ou sur le titre d'un groupe). */
@@ -144,6 +152,11 @@ export function Canvas({
   const activeRef: RelationRef | null = activeEdge
     ? { line: activeEdge.relation.line, from: activeEdge.relation.from, to: activeEdge.relation.to, auto: activeEdge.relation.auto, via: activeEdge.relation.via, kind: activeEdge.relation.kind }
     : null;
+
+  // Relations sélectionnées ensemble : celles qui existent encore (le script a pu changer).
+  const edgeSel = useMemo(() => new Set(edges.filter((e) => edgeSelection.has(e.relation.line)).map((e) => e.relation.line)), [edges, edgeSelection]);
+  const selectedRelEdges = edges.filter((e) => edgeSel.has(e.relation.line));
+  const edgeRefs: RelationRef[] = selectedRelEdges.map(({ relation: r }) => ({ line: r.line, from: r.from, to: r.to, auto: r.auto, via: r.via, kind: r.kind }));
 
   /** Classe sous un point (monde), la plus haute d'abord. */
   const boxAt = (p: Point): string | null => {
@@ -241,6 +254,11 @@ export function Canvas({
       // Abandon du déplacement d'une extrémité : la flèche reste où elle était.
       drag.current = null;
       setEndDrag(null);
+    } else if (e.key === 'Escape' && edgeSel.size > 0) {
+      setEdgeSelection(new Set());
+    } else if (!link && (e.key === 'Delete' || e.key === 'Backspace') && edgeSel.size > 0) {
+      onRelationsDelete?.(edgeRefs);
+      setEdgeSelection(new Set());
     } else if (e.key === 'Escape' && (link || activeRef || selected2.size > 0)) {
       setLink(null);
       setSelectedEdge(null);
@@ -377,6 +395,20 @@ export function Canvas({
     e.stopPropagation();
     setLink(null);
     setSelected(null);
+    // Shift+clic : ajoute / retire la relation de la sélection multiple (la relation déjà ouverte en fait partie).
+    if (e.shiftKey && onRelationsChange) {
+      setSelection(new Set());
+      setEdgeSelection((cur) => {
+        const next = new Set(cur);
+        if (selectedEdge !== null && next.size === 0) next.add(selectedEdge);
+        if (next.has(relation.line)) next.delete(relation.line);
+        else next.add(relation.line);
+        return next;
+      });
+      setSelectedEdge(null);
+      return;
+    }
+    setEdgeSelection(new Set());
     setSelectedEdge(relation.line);
   };
 
@@ -397,6 +429,7 @@ export function Canvas({
     }
     setLink(null);
     setSelectedEdge(null);
+    setEdgeSelection(new Set());
     // Shift+clic : ajoute / retire l'élément de la sélection multiple.
     if (e.shiftKey) {
       setSelection((s) => {
@@ -433,6 +466,7 @@ export function Canvas({
   };
 
   const onBackgroundDown = (e: PointerEvent<SVGSVGElement>) => {
+    setEdgeSelection(new Set());
     setSelected(null);
     onSelectClass?.(null);
     setSelectedEdge(null);
@@ -632,6 +666,7 @@ export function Canvas({
             theme={theme}
             selected={selected}
             selectedEdge={selectedEdge}
+            selectedEdges={edgeSel}
             highlighted={highlighted}
             focus={focus}
             edges={edges}
@@ -787,6 +822,38 @@ export function Canvas({
             />
           );
         })()}
+
+      {/* Menu : actions sur plusieurs relations (Shift+clic) */}
+      {edgeSel.size > 0 && !link && !dragging && (() => {
+        // Au-dessus des relations ET des éléments qu'elles relient : le menu ne masque rien du diagramme concerné.
+        const b = boundsOf([
+          ...selectedRelEdges.flatMap((e) => e.points.map((p) => ({ x: p.x, y: p.y, w: 0, h: 0 }))),
+          ...selectedRelEdges.flatMap((e) => [boxes[e.relation.from], boxes[e.relation.to]]).filter((r): r is NonNullable<typeof r> => !!r),
+        ]);
+        if (!b) return null;
+        const top = toScreen({ x: b.x + b.w / 2, y: b.y });
+        const bottom = toScreen({ x: b.x, y: b.y + b.h });
+        const above = top.y - 12 >= 70;
+        const kinds = selectedRelEdges.map((e) => relationChoiceOf(vocab, e.relation)?.id);
+        return (
+          <RelationSelectionMenu
+            x={top.x}
+            y={above ? top.y - 12 : Math.min(bottom.y + 12, bounds.h - 60)}
+            above={above}
+            boundsW={bounds.w}
+            count={edgeSel.size}
+            choices={vocab.relations}
+            currentId={new Set(kinds).size === 1 ? kinds[0] : undefined}
+            onPick={(choice) => onRelationsChange?.(edgeRefs, (r) => changeForChoice(choice, r.label))}
+            onReverse={() => onRelationsChange?.(edgeRefs, { reverse: true })}
+            onDelete={() => {
+              onRelationsDelete?.(edgeRefs);
+              setEdgeSelection(new Set());
+            }}
+            onClear={() => setEdgeSelection(new Set())}
+          />
+        );
+      })()}
 
       {/* Menu : actions sur une sélection multiple */}
       {selected2.size > 0 && !lasso && !link && !dragging && (() => {
