@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
-import { BookIcon, CodeIcon, DownloadIcon, ImageIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
+import { BookIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -18,6 +18,10 @@ interface Props {
   onImport: () => void;
   onExportPdf: (ids: string[]) => void;
   onExportCode: (ids: string[]) => void;
+  onShowCodegen: () => void;
+  onShareLink: () => void;
+  /** Historique des versions locales. */
+  onShowVersions: () => void;
   saveStatus: SaveStatus;
   onUndo: () => void;
   onRedo: () => void;
@@ -121,13 +125,16 @@ export function Toolbar(p: Props) {
         <Button onClick={p.onRedo} title="Rétablir (Ctrl+Y ou Ctrl+Maj+Z)" disabled={!p.canRedo}>
           <RedoIcon />
         </Button>
+        <Button onClick={p.onShowVersions} title="Historique des versions : revenir à l’état d’il y a 10 minutes, une heure, hier…">
+          <HistoryIcon />
+        </Button>
         <span className="mx-1 h-5 w-px bg-white/15" aria-hidden="true" />
         <StyleMenu {...p} />
         <Button onClick={p.onImport} title="Importer un projet (Ctrl+O) — ou glissez le fichier sur la fenêtre">
           <UploadIcon />
           <span className="hidden sm:inline">Importer</span>
         </Button>
-        <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportCode={p.onExportCode} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
+        <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportCode={p.onExportCode} onShowCodegen={p.onShowCodegen} onShareLink={p.onShareLink} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
         <Button onClick={p.onShowFeatures} title="Toutes les fonctionnalités et les raccourcis (F1)">
           <BookIcon />
           <span className="hidden xl:inline">Fonctionnalités</span>
@@ -149,6 +156,8 @@ function ExportMenu({
   activeId,
   onExportPdf,
   onExportCode,
+  onShowCodegen,
+  onShareLink,
   onExportSvg,
   onExportProject,
 }: {
@@ -156,6 +165,8 @@ function ExportMenu({
   activeId: string;
   onExportPdf: (ids: string[]) => void;
   onExportCode: (ids: string[]) => void;
+  onShowCodegen: () => void;
+  onShareLink: () => void;
   onExportSvg: (ids: string[]) => void;
   onExportProject: (ids: string[]) => void;
 }) {
@@ -257,6 +268,10 @@ function ExportMenu({
             onExportCode,
           )}
           {item(<ImageIcon />, 'Image du diagramme (.svg)', n > 1 ? `Une image par tableau (${n} fichiers)` : 'Nette à toutes les tailles, pour un rapport ou un site', onExportSvg)}
+          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+          <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Tableau affiché</p>
+          {item(<CodeIcon />, 'Code source (Java, TypeScript, Python)…', 'Squelettes des classes : attributs, signatures, héritage', () => onShowCodegen())}
+          {item(<LinkIcon />, 'Copier un lien de partage', 'Le diagramme tient dans le lien : aucun compte, aucun serveur', () => onShareLink())}
           {n === 0 && <p className="px-2.5 pb-1.5 text-xs text-amber-600 dark:text-amber-400">Coche au moins un tableau.</p>}
         </div>
       )}

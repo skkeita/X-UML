@@ -9,7 +9,7 @@ import type { ClassNode, Diagram, DiagramType, NodeKind, Relation, RelationKind 
  */
 
 /** Ce qu'on peut créer : un mot-clé du script (+ variante de classe : abstraite, interface, énumération). */
-export type ElementKind = 'class' | 'abstract' | 'interface' | 'enum' | 'actor' | 'usecase' | 'object' | 'system' | 'package';
+export type ElementKind = 'class' | 'abstract' | 'interface' | 'enum' | 'actor' | 'usecase' | 'object' | 'system' | 'package' | 'note';
 
 export interface ElementChoice {
   kind: ElementKind;
@@ -65,6 +65,7 @@ export const ELEMENT_LABEL: Record<ElementKind, string> = {
   object: 'Objet',
   system: 'Système',
   package: 'Paquetage',
+  note: 'Note',
 };
 
 /** « Nom de l’acteur », « Nom du cas d’utilisation »… (champ de saisie à la création). */
@@ -78,6 +79,7 @@ export const NAME_OF: Record<ElementKind, string> = {
   object: 'Nom de l’objet',
   system: 'Nom du système',
   package: 'Nom du paquetage',
+  note: 'Texte de la note',
 };
 
 export const ELEMENT_PLURAL: Record<ElementKind, string> = {
@@ -90,6 +92,7 @@ export const ELEMENT_PLURAL: Record<ElementKind, string> = {
   object: 'Objets',
   system: 'Systèmes',
   package: 'Paquetages',
+  note: 'Notes',
 };
 
 const CLASS_RELATIONS: RelationChoice[] = [
@@ -114,6 +117,7 @@ export const VOCABULARIES: Record<DiagramType, Vocabulary> = {
       E('abstract', 'Classe abstraite', 'une classe abstraite', 'Ne s’instancie pas directement'),
       E('interface', 'Interface', 'une interface', 'Contrat d’opérations'),
       E('enum', 'Énumération', 'une énumération', 'Liste fermée de valeurs'),
+      E('note', 'Note', 'une note', 'Commentaire rattaché à un ou plusieurs éléments'),
     ],
     relations: CLASS_RELATIONS,
     relation: 'relation',
@@ -132,6 +136,7 @@ export const VOCABULARIES: Record<DiagramType, Vocabulary> = {
       E('actor', 'Acteur', 'un acteur', 'Rôle externe qui interagit avec le système'),
       E('usecase', 'Cas d’utilisation', 'un cas d’utilisation', 'Service rendu par le système'),
       E('system', 'Système', 'un système', 'Frontière du système étudié'),
+      E('note', 'Note', 'une note', 'Commentaire rattaché à un ou plusieurs éléments'),
     ],
     relations: [
       { id: 'association', kind: 'association', label: 'Association', hint: 'L’acteur participe au cas d’utilisation' },
@@ -154,6 +159,7 @@ export const VOCABULARIES: Record<DiagramType, Vocabulary> = {
     create: [
       E('system', 'Système', 'le système', 'Système étudié, au centre'),
       E('actor', 'Acteur', 'un acteur', 'Acteur humain ou système externe'),
+      E('note', 'Note', 'une note', 'Commentaire rattaché à un ou plusieurs éléments'),
     ],
     relations: [
       { id: 'association', kind: 'association', label: 'Association', hint: 'L’acteur interagit avec le système' },
@@ -172,7 +178,7 @@ export const VOCABULARIES: Record<DiagramType, Vocabulary> = {
     element: 'paquetage',
     elements: 'paquetages',
     elementArticle: 'un paquetage',
-    create: [E('package', 'Paquetage', 'un paquetage', 'Regroupement d’éléments du modèle')],
+    create: [E('package', 'Paquetage', 'un paquetage', 'Regroupement d’éléments du modèle'), E('note', 'Note', 'une note', 'Commentaire rattaché à un ou plusieurs éléments')],
     relations: [
       { id: 'dependency', kind: 'dependency', label: 'Dépendance', hint: 'A dépend de B' },
       { id: 'import', kind: 'dependency', label: 'Importation «import»', hint: 'A importe les éléments publics de B', stereotype: '<<import>>' },
@@ -194,6 +200,7 @@ export const VOCABULARIES: Record<DiagramType, Vocabulary> = {
     create: [
       E('object', 'Objet', 'un objet', 'Instance d’une classe (nom : Classe)'),
       E('actor', 'Acteur', 'un acteur', 'Initiateur des messages'),
+      E('note', 'Note', 'une note', 'Commentaire rattaché à un ou plusieurs éléments'),
     ],
     relations: [
       { id: 'message', kind: 'directed', label: 'Message', hint: 'A envoie un message à B (numéroté)' },
@@ -264,7 +271,7 @@ export function summarize(v: Vocabulary, diagram: Diagram): string {
   const plural = (n: number, k: ElementKind) => `${n} ${(n > 1 ? ELEMENT_PLURAL : ELEMENT_LABEL)[k].toLowerCase()}`;
   const parts = [...counts.entries()].map(([k, n]) => plural(n, k));
   if (parts.length === 0) parts.push(`0 ${v.element}`);
-  const rels = diagram.relations.length;
+  const rels = diagram.relations.filter((r) => r.via !== 'note').length;
   const rel = v.relation;
   parts.push(`${rels} ${rel}${rels > 1 ? 's' : ''}`);
   return parts.join(', ');

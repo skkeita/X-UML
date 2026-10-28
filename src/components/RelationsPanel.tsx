@@ -132,7 +132,9 @@ const SELECT =
  */
 export function RelationsPanel({ relations, elements, filter, vocab, onChange, onDelete, onAdd, embedded }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const list = filter ? relations.filter((r) => r.from === filter || r.to === filter) : relations;
+  // Les liens de note se règlent depuis la note elle-même : ils ne sont pas des relations UML.
+  const umlRelations = relations.filter((r) => r.via !== 'note');
+  const list = filter ? umlRelations.filter((r) => r.from === filter || r.to === filter) : umlRelations;
   const names = elements.map((e) => e.name);
   const labelOf = (n: string) => elements.find((e) => e.name === n)?.label ?? n;
   // Un élément cité dans une relation doit rester sélectionnable même s'il n'est pas déclaré.

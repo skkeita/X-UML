@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { ALIGN_MODES, type AlignMode } from '../core/align';
 import { NAMED_COLORS } from '../core/parser';
-import { CloseIcon, CopyIcon, FolderIcon, FrameIcon, PaletteSmallIcon, PencilIcon, SystemIcon, TrashIcon, UngroupIcon } from './Icons';
+import { CloseIcon, CopyIcon, FolderIcon, FrameIcon, NoteIcon, PaletteSmallIcon, PencilIcon, SystemIcon, TrashIcon, UngroupIcon } from './Icons';
 import type { DiagramType, LegendEntry } from '../core/types';
 
 /** Types de diagramme proposés pour « typer » une sélection. */
@@ -31,6 +32,10 @@ interface Props {
   onType: (type: DiagramType, title: string) => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  /** Aligne / répartit la sélection. */
+  onAlign?: (mode: AlignMode) => void;
+  /** Ajoute une note UML rattachée à la sélection. */
+  onNote?: (text: string) => void;
   /** Colore la sélection (null : retire la couleur) ; le libellé alimente la légende. */
   onColor: (color: string | null, label: string) => void;
   /** Entrées de légende existantes : choisir une couleur déjà libellée reprend son libellé. */
@@ -46,8 +51,9 @@ interface Props {
  * Menu flottant au-dessus d'une sélection multiple : tout ce qu'on peut faire avec,
  * sans quitter le diagramme ni écrire de code.
  */
-export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFrame, onUngroup, onPackage, groupAction, groupPlaceholder, onType, onDelete, onDuplicate, onColor, legend, currentColor, colors, onClear }: Props) {
-  const [step, setStep] = useState<'root' | 'package' | 'type' | 'title' | 'color' | 'rename'>('root');
+export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFrame, onUngroup, onPackage, groupAction, groupPlaceholder, onType, onDelete, onDuplicate, onNote, onAlign, onColor, legend, currentColor, colors, onClear }: Props) {
+  const [step, setStep] = useState<'root' | 'package' | 'type' | 'title' | 'color' | 'rename' | 'note' | 'align'>('root');
+  const [noteDraft, setNoteDraft] = useState('');
   // Centré sur la sélection, mais jamais coupé par le bord du canevas (largeur réelle mesurée).
   const rootRef = useRef<HTMLDivElement>(null);
   const [left, setLeft] = useState(x);
@@ -152,6 +158,16 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
           <button type="button" className={btn} onClick={onDuplicate} title="Dupliquer (Ctrl+D) : copies décalées, avec leurs membres et leurs liaisons internes">
             <CopyIcon /> Dupliquer
           </button>
+          {onAlign && names.length >= 2 && (
+            <button type="button" className={btn} onClick={() => setStep('align')} title="Aligner ou répartir les éléments sélectionnés">
+              <AlignIcon mode="left" /> Aligner
+            </button>
+          )}
+          {onNote && (
+            <button type="button" className={btn} onClick={() => setStep('note')} title="Annoter : une note UML rattachée aux éléments sélectionnés">
+              <NoteIcon /> Note
+            </button>
+          )}
           <button type="button" className={btn} onClick={() => setStep('color')} title="Couleur de fond (et entrée de légende)">
             <PaletteSmallIcon /> Couleur
           </button>
@@ -256,6 +272,63 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
         </div>
       )}
 
+      {step === 'align' && (
+        <div className="flex items-center gap-0.5 p-0.5" role="group" aria-label="Aligner et répartir">
+          {ALIGN_MODES.map((a, i) => (
+            <span key={a.mode} className="contents">
+              {(i === 3 || i === 6) && <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />}
+              <button
+                type="button"
+                title={a.label + (names.length < a.min ? ` (${a.min} éléments minimum)` : '')}
+                aria-label={a.label}
+                disabled={names.length < a.min}
+                onClick={() => onAlign?.(a.mode)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100 disabled:opacity-30 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <AlignIcon mode={a.mode} />
+              </button>
+            </span>
+          ))}
+          <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
+          <button type="button" className={btn} onClick={() => setStep('root')}>
+            Retour
+          </button>
+        </div>
+      )}
+
+      {step === 'note' && (
+        <form
+          className="flex w-80 flex-col gap-1.5 p-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (noteDraft.trim()) onNote?.(noteDraft.trim());
+          }}
+        >
+          <textarea
+            autoFocus
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && noteDraft.trim()) onNote?.(noteDraft.trim());
+              if (e.key === 'Escape') setStep('root');
+            }}
+            rows={3}
+            placeholder="Texte de la note (ex. « À compléter : règles de calcul de la remise »)"
+            aria-label="Texte de la note"
+            className="resize-none rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950"
+          />
+          <div className="flex items-center gap-1">
+            <button type="submit" disabled={!noteDraft.trim()} className="h-8 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40">
+              Ajouter la note
+            </button>
+            <button type="button" className={btn} onClick={() => setStep('root')}>
+              Retour
+            </button>
+            <span className="ml-auto text-[11px] text-slate-400">Ctrl+Entrée</span>
+          </div>
+        </form>
+      )}
+
       {(step === 'package' || step === 'title' || step === 'rename') && (
         <form onSubmit={submit} className="flex items-center gap-1 p-0.5">
           <input
@@ -276,5 +349,25 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
         </form>
       )}
     </div>
+  );
+}
+
+/** Pictogrammes d'alignement : un trait de référence et deux blocs. */
+function AlignIcon({ mode }: { mode: AlignMode }) {
+  const p = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' as const };
+  const shapes: Record<AlignMode, JSX.Element> = {
+    left: <><path d="M4 3v18" {...p} /><rect x="7" y="6" width="12" height="4" rx="1" {...p} /><rect x="7" y="14" width="7" height="4" rx="1" {...p} /></>,
+    hcenter: <><path d="M12 3v18" strokeDasharray="2 2" {...p} /><rect x="5" y="6" width="14" height="4" rx="1" {...p} /><rect x="8" y="14" width="8" height="4" rx="1" {...p} /></>,
+    right: <><path d="M20 3v18" {...p} /><rect x="5" y="6" width="12" height="4" rx="1" {...p} /><rect x="10" y="14" width="7" height="4" rx="1" {...p} /></>,
+    top: <><path d="M3 4h18" {...p} /><rect x="6" y="7" width="4" height="12" rx="1" {...p} /><rect x="14" y="7" width="4" height="7" rx="1" {...p} /></>,
+    vcenter: <><path d="M3 12h18" strokeDasharray="2 2" {...p} /><rect x="6" y="5" width="4" height="14" rx="1" {...p} /><rect x="14" y="8" width="4" height="8" rx="1" {...p} /></>,
+    bottom: <><path d="M3 20h18" {...p} /><rect x="6" y="5" width="4" height="12" rx="1" {...p} /><rect x="14" y="10" width="4" height="7" rx="1" {...p} /></>,
+    hspace: <><path d="M3 4v16M21 4v16" {...p} /><rect x="9.5" y="7" width="5" height="10" rx="1" {...p} /></>,
+    vspace: <><path d="M4 3h16M4 21h16" {...p} /><rect x="7" y="9.5" width="10" height="5" rx="1" {...p} /></>,
+  };
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      {shapes[mode]}
+    </svg>
   );
 }

@@ -11,7 +11,7 @@ export interface Member {
 }
 
 /** Nature d'un élément du tableau blanc. */
-export type NodeKind = 'class' | 'actor' | 'usecase' | 'object' | 'system' | 'package';
+export type NodeKind = 'class' | 'actor' | 'usecase' | 'object' | 'system' | 'package' | 'note';
 
 export interface ClassNode {
   name: string;
@@ -65,7 +65,8 @@ export interface Relation {
   /** Créée automatiquement à partir du code (pas écrite comme liaison). */
   auto?: boolean;
   /** Origine d'une liaison automatique : « extends », « implements », ou le type d'un attribut / d'une méthode. */
-  via?: 'extends' | 'implements' | 'member';
+  /** « note » : trait pointillé (sans flèche) qui rattache une note UML à un élément. */
+  via?: 'extends' | 'implements' | 'member' | 'note';
   /** Multiplicités aux extrémités (ex. "1" et "0..*"). */
   multFrom?: string;
   multTo?: string;

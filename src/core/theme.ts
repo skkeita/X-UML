@@ -16,6 +16,8 @@ export interface SceneTheme {
   accent: string;
   /** 1 = coins arrondis (par défaut), 0 = coins carrés. */
   corner?: number;
+  /** Fond des notes UML (papier légèrement jaune, comme un post-it de relecture). */
+  noteFill?: string;
 }
 
 export const LIGHT: SceneTheme = {
@@ -28,6 +30,7 @@ export const LIGHT: SceneTheme = {
   muted: '#5E6C7E',
   edge: '#2F3B4A',
   accent: '#1F5FAD', // cobalt : sélection, poignées
+  noteFill: '#FBF5DD',
 };
 
 export const DARK: SceneTheme = {
@@ -40,6 +43,7 @@ export const DARK: SceneTheme = {
   muted: '#98A7B8',
   edge: '#A2B2C4',
   accent: '#6FA3E3',
+  noteFill: '#2A2719',
 };
 
 export const sceneTheme = (name: ThemeName): SceneTheme => (name === 'dark' ? DARK : LIGHT);
@@ -82,6 +86,8 @@ export function tinted(theme: SceneTheme, color: string): SceneTheme {
     ...theme,
     headerFill: color,
     boxFill: light ? mix(color, '#ffffff', 0.55) : mix(color, '#000000', 0.25),
+    // Une note colorée prend la teinte choisie (au lieu du papier jaune par défaut).
+    noteFill: light ? mix(color, '#ffffff', 0.4) : mix(color, '#000000', 0.25),
     text,
     muted: light ? '#475569' : '#e2e8f0',
     boxStroke: light ? mix(color, '#000000', 0.55) : mix(color, '#ffffff', 0.35),

@@ -19,7 +19,7 @@ const REPO = 'https://github.com/skkeita/X-UML';
 const AUTHOR = 'skkeita';
 const UPDATED = '28 octobre 2026';
 /** Clés que l'application écrit dans le stockage du navigateur (voir l'onglet Confidentialité). */
-export const STORAGE_KEYS = ['x-uml:project:v2', 'x-uml:project:v1', 'x-uml:theme', 'x-uml:relation-mode', 'x-uml:editor-mode'];
+export const STORAGE_KEYS = ['x-uml:project:v2', 'x-uml:project:v1', 'x-uml:versions:v1', 'x-uml:theme', 'x-uml:relation-mode', 'x-uml:editor-mode', 'x-uml:codegen-lang'];
 
 const A = ({ href, children }: { href: string; children: ReactNode }) => (
   <a href={href} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:decoration-indigo-600 dark:text-indigo-300">
@@ -99,13 +99,20 @@ function Confidentialite({ onExport }: { onExport: () => void }) {
 
       <H>Ce qui reste dans votre navigateur</H>
       <P>
-        Pour que votre travail ne soit pas perdu, l’application enregistre dans le stockage local de votre navigateur (localStorage) vos tableaux, leur disposition et vos préférences
-        d’affichage (thème clair ou sombre, mode Code ou Visuel). Ces informations ne quittent jamais votre ordinateur, sauf si vous les exportez vous-même. Les fichiers que vous
+        Pour que votre travail ne soit pas perdu, l’application enregistre dans le stockage local de votre navigateur (localStorage) vos tableaux, leur disposition, l’historique de leurs versions
+        (au plus 30 instantanés) et vos préférences d’affichage (thème clair ou sombre, mode Code ou Visuel, langage de génération de code). Ces informations ne quittent jamais votre ordinateur, sauf si vous les exportez vous-même. Les fichiers que vous
         importez sont lus directement dans le navigateur, sans être envoyés nulle part.
       </P>
       <P>
         Ce stockage est strictement nécessaire au service que vous utilisez (enregistrer vos diagrammes et vos réglages) : il est dispensé de consentement selon les
         recommandations de la CNIL, c’est pourquoi aucun bandeau ne vous est présenté.
+      </P>
+
+      <H>Liens de partage</H>
+      <P>
+        Quand vous copiez un lien de partage, le diagramme est compressé et placé dans le fragment de l’adresse (la partie après « #d= »). Ce fragment n’est jamais transmis au
+        serveur par le navigateur : le diagramme voyage uniquement dans le lien, et seules les personnes à qui vous l’envoyez peuvent l’ouvrir. Ne partagez donc pas par lien un
+        diagramme confidentiel sur un canal public.
       </P>
 
       <H>Hébergement</H>
@@ -125,7 +132,7 @@ function Confidentialite({ onExport }: { onExport: () => void }) {
 
       <div className="mt-4 max-w-[68ch] rounded-lg border border-slate-200 p-3 dark:border-slate-700">
         <p className="text-[14px] font-medium text-slate-900 dark:text-white">Effacer les données de X-UML dans ce navigateur</p>
-        <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">Supprime tous vos tableaux et vos préférences. Exportez d’abord votre projet si vous voulez le garder.</p>
+        <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">Supprime tous vos tableaux, leur historique et vos préférences. Exportez d’abord votre projet si vous voulez le garder.</p>
         <div className="mt-2.5 flex flex-wrap gap-2">
           <button type="button" onClick={onExport} className="rounded-md border border-slate-300 px-3 py-1.5 text-[13px] font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800">
             Exporter le projet

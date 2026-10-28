@@ -145,3 +145,21 @@ export const BookIcon = () => (
     <path d="M4 21V5M8 7h7M8 11h7" />
   </Svg>
 );
+export const NoteIcon = ({ size = 14 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M4 3h11l5 5v13H4z" />
+    <path d="M15 3v5h5M8 12h8M8 16h6" />
+  </Svg>
+);
+export const LinkIcon = ({ size = 16 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" />
+    <path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" />
+  </Svg>
+);
+export const HistoryIcon = ({ size = 16 }: IconProps) => (
+  <Svg size={size}>
+    <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6" />
+    <path d="M3 4v4h4M12 8v4.5l3 2" />
+  </Svg>
+);
