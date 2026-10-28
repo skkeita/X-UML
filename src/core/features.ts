@@ -99,6 +99,13 @@ export const FEATURE_SECTIONS: FeatureSection[] = [
         tags: 'plusieurs lasso rectangle',
       },
       {
+        title: 'Sélectionner plusieurs relations',
+        text: 'Même type pour toutes en un clic, inverser leur sens, ou les supprimer ensemble. Chaque action s’annule en une fois.',
+        how: 'Shift+clic sur chaque relation (un second Shift+clic la retire) ; le menu apparaît au-dessus.',
+        keys: ['Suppr', 'Échap'],
+        tags: 'liaisons liens flèches plusieurs multiple',
+      },
+      {
         title: 'Actions sur une sélection',
         text: 'Regrouper dans un paquetage (ou placer dans un système), dupliquer, colorer, encadrer comme diagramme typé, supprimer.',
         how: 'Le menu apparaît au-dessus de la sélection.',
