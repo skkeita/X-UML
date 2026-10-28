@@ -45,3 +45,22 @@ src/
 ```
 
 Raccourcis : `Ctrl+B` masque l'éditeur · `Alt` pendant un glisser désactive l'aimantation.
+
+## Confidentialité
+
+X-UML ne collecte aucune donnée : pas de compte, pas de serveur, pas de cookie, pas de mesure d'audience, pas de publicité, aucune ressource chargée depuis un autre site (les polices sont incluses dans l'application).
+Vos diagrammes et vos préférences (thème, mode d'édition) sont enregistrés uniquement dans votre navigateur (`localStorage`) et ne quittent jamais votre ordinateur, sauf si vous les exportez vous-même.
+Le site est hébergé par GitHub Pages, qui peut conserver des journaux techniques (adresse IP) pour la sécurité du service : voir la [déclaration de confidentialité de GitHub](https://docs.github.com/fr/site-policy/privacy-policies/github-general-privacy-statement).
+
+Le détail (mentions légales, confidentialité, licences) est consultable dans l'application : lien « Mentions légales » en bas du diagramme.
+
+## Licence
+
+Code publié sous licence [MIT](LICENSE) © 2026 skkeita.
+Les diagrammes que vous créez vous appartiennent.
+
+X-UML inclut des composants open source (React, jsPDF et ses dépendances sous licence MIT ; polices IBM Plex sous licence SIL Open Font License 1.1). Leurs licences complètes sont générées à chaque build dans `dist/third-party-licenses.txt` et publiées avec le site.
+
+## Contribuer, signaler un problème
+
+Les suggestions et signalements se font dans les [issues du dépôt](https://github.com/skkeita/X-UML/issues).

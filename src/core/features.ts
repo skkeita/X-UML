@@ -295,6 +295,12 @@ export const FEATURE_SECTIONS: FeatureSection[] = [
     title: 'Sauvegarde et annulation',
     items: [
       { title: 'Sauvegarde automatique', text: 'Tout est enregistré dans le navigateur au fil de l’eau, sans compte ni serveur. L’indicateur en haut à gauche le confirme.', tags: 'local hors ligne' },
+      {
+        title: 'Confidentialité et mentions légales',
+        text: 'Aucune donnée collectée : pas de compte, de serveur, de cookie ni de statistiques. Vos diagrammes restent dans votre navigateur ; vous pouvez les effacer à tout moment.',
+        how: 'Lien « Mentions légales » en bas à droite du diagramme (onglets Mentions légales, Confidentialité, Licences).',
+        tags: 'rgpd cnil vie privée cookies licence mit open source hébergeur',
+      },
       { title: 'Annuler / rétablir', text: 'Toute action est annulable : frappe, déplacement, suppression, couleur, onglet…', keys: ['Ctrl+Z', 'Ctrl+Y'], how: 'Ou les flèches de la barre du haut.' },
     ],
   },

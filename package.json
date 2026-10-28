@@ -2,6 +2,17 @@
   "name": "x-uml",
   "private": true,
   "version": "0.1.0",
+  "description": "Éditeur de diagrammes UML gratuit, par le texte ou à la souris, qui fonctionne entièrement dans le navigateur.",
+  "license": "MIT",
+  "author": "skkeita (https://github.com/skkeita)",
+  "homepage": "https://skkeita.github.io/X-UML/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skkeita/X-UML.git"
+  },
+  "bugs": {
+    "url": "https://github.com/skkeita/X-UML/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,6 +33,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
+    "rollup-plugin-license": "^3.7.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",

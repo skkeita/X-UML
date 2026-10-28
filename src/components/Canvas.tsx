@@ -46,6 +46,8 @@ interface Props {
   /** Titre d'un groupe (paquetage, système, cadre) et dégroupement. */
   onRenameGroup?: (group: Group, title: string) => void;
   onUngroup?: (group: Group) => void;
+  /** Ouvre les informations légales (lien permanent en bas du diagramme). */
+  onShowLegal?: () => void;
   /** Consigne affichée sur un tableau vide (dépend du mode Code / Visuel). */
   emptyHint?: string;
   onTypeSelection?: (type: DiagramType, title: string, names: string[]) => void;
@@ -106,6 +108,7 @@ export function Canvas({
   onColor,
   onCreatePackage,
   emptyHint,
+  onShowLegal,
   onRenameElement,
   anchors,
   onEndpointDrop,
@@ -964,6 +967,17 @@ export function Canvas({
         <li>Poignée ronde : nouvelle relation</li>
         <li>F1 : toutes les fonctionnalités</li>
       </ul>
+      {/* Mentions légales : toujours accessibles, quel que soit l'état du panneau ou de l'écran */}
+      {onShowLegal && (
+        <button
+          type="button"
+          onClick={onShowLegal}
+          className="absolute bottom-3 right-[148px] rounded px-1 text-[11px] underline decoration-transparent underline-offset-2 hover:decoration-current focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500"
+          style={{ color: theme.muted }}
+        >
+          Mentions légales
+        </button>
+      )}
     </div>
   );
 }

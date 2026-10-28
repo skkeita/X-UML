@@ -16,6 +16,7 @@ import { addElement, renameElement, setElementKind, setGroupTitle, setElementLab
 import { Inspector } from './components/Inspector';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FeaturesDialog } from './components/FeaturesDialog';
+import { LEGAL_TABS, LegalDialog, type LegalTab } from './components/LegalDialog';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
@@ -614,6 +615,23 @@ export default function App() {
     if (f) void importFile(f);
   };
 
+  // Informations légales : lien en bas du diagramme, et adresses directes (…/#mentions-legales, #confidentialite, #licences).
+  const tabFromHash = (): LegalTab | null => LEGAL_TABS.find((t) => t.hash === window.location.hash)?.id ?? null;
+  const [legal, setLegal] = useState<LegalTab | null>(tabFromHash);
+  useEffect(() => {
+    const onHash = () => setLegal(tabFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const openLegal = useCallback((tab: LegalTab | null) => {
+    setLegal(tab);
+    // L'adresse suit l'onglet : on peut partager un lien direct vers la politique de confidentialité.
+    const hash = tab ? (LEGAL_TABS.find((t) => t.id === tab)?.hash ?? '') : '';
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+  }, []);
+  const legalOpenRef = useRef(false);
+  legalOpenRef.current = legal !== null;
+
   // Catalogue des fonctionnalités : bouton de la barre du haut ou F1 (au lieu de l'aide du navigateur).
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const closeFeatures = useCallback(() => setFeaturesOpen(false), []);
@@ -632,7 +650,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      if (featuresOpenRef.current) return; // le catalogue est ouvert : Ctrl+Z… agissent sur sa recherche
+      if (featuresOpenRef.current || legalOpenRef.current) return; // une fenêtre est ouverte : pas d'action sur le diagramme
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) undo();
       else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
@@ -816,6 +834,7 @@ export default function App() {
             onTypeSelection={handleTypeSelection}
             fitKey={fitKey}
             vocab={vocab}
+            onShowLegal={() => openLegal('mentions')}
             emptyHint={
               relationMode === 'custom'
                 ? `Ajoutez ${vocab.create[0]?.withArticle ?? 'un élément'} depuis le panneau de gauche pour commencer`
@@ -832,7 +851,8 @@ export default function App() {
         </div>
       )}
       <Toast toast={toast} onClose={closeToast} />
-      {featuresOpen && <FeaturesDialog onClose={closeFeatures} />}
+      {featuresOpen && <FeaturesDialog onClose={closeFeatures} onShowLegal={() => { setFeaturesOpen(false); openLegal('mentions'); }} />}
+      {legal && <LegalDialog tab={legal} onTab={openLegal} onClose={() => openLegal(null)} onExport={() => downloadProject()} />}
     </div>
   );
 }
