@@ -10,6 +10,7 @@ import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, 
 import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
 import { boundsOf, computeBoxes, computeFrames, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
+import { relationKey, type Anchor, type EdgeAnchors } from './core/routing';
 import { VOCABULARIES, inferDiagramType, summarize, type ElementKind } from './core/vocabulary';
 import { addElement, renameElement, setElementKind, setGroupTitle, setElementLabel, setGroupOf, setMembers, setObjectType, setParents, type MemberDraft } from './core/modelEdit';
 import { Inspector } from './components/Inspector';
@@ -251,6 +252,64 @@ export default function App() {
     (type: DiagramType, title: string, names: string[]) => editSource((src) => addDiagramFrame(src, type, title, names)),
     [editSource],
   );
+  // --- Extrémités de flèches déplacées à la main -----------------------------------------------
+  /**
+   * Extrémité lâchée sur un élément. Même élément : le point d'attache est mémorisé (côté + position).
+   * Autre élément : la relation est reliée à lui (le script est mis à jour) et la pointe reste où on l'a posée.
+   * Une seule étape d'annulation dans les deux cas.
+   */
+  const handleEndpointDrop = useCallback(
+    (index: number, which: 'start' | 'end', target: string, anchor: Anchor) => {
+      const rel = diagram.relations[index];
+      if (!rel) return;
+      const oldKey = relationKey(diagram.relations, index);
+      const current = which === 'end' ? rel.to : rel.from;
+      if (target === current) {
+        history.push(
+          onActive((b) => {
+            const anchors = { ...(b.anchors ?? {}) };
+            anchors[oldKey] = { ...anchors[oldKey], [which]: anchor };
+            return { ...b, anchors };
+          }),
+        );
+        return;
+      }
+      const ref: RelationRef = { line: rel.line, from: rel.from, to: rel.to, auto: rel.auto, via: rel.via, kind: rel.kind };
+      const next = updateRelation(active.source, ref, which === 'end' ? { to: target } : { from: target });
+      if (next === active.source) return;
+      const moved = diagram.relations.map((r, i) => (i === index ? { ...r, [which === 'end' ? 'to' : 'from']: target } : r));
+      const newKey = relationKey(moved, index);
+      history.push(
+        onActive((b) => {
+          const anchors: Record<string, EdgeAnchors> = { ...(b.anchors ?? {}) };
+          const old = anchors[oldKey];
+          delete anchors[oldKey];
+          // L'autre extrémité garde son placement manuel, s'il y en avait un.
+          const keep = which === 'end' ? { start: old?.start } : { end: old?.end };
+          anchors[newKey] = { ...keep, [which]: anchor };
+          return { ...b, source: next, anchors };
+        }),
+      );
+    },
+    [diagram.relations, active.source, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const handleAnchorReset = useCallback(
+    (index: number, which: 'start' | 'end') => {
+      const key = relationKey(diagram.relations, index);
+      history.push(
+        onActive((b) => {
+          const anchors = { ...(b.anchors ?? {}) };
+          const e = { ...anchors[key] };
+          delete e[which];
+          if (e.start || e.end) anchors[key] = e;
+          else delete anchors[key];
+          return { ...b, anchors };
+        }),
+      );
+    },
+    [diagram.relations, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // --- Panneau Visuel : construire sans écrire de code ------------------------------------------
   const setBoardType = useCallback(
     (type: DiagramType) => history.push(onActive((b) => ({ ...b, type }))),
@@ -277,7 +336,17 @@ export default function App() {
             positions[id] = positions[name];
             delete positions[name];
           }
-          return { ...b, source: renamed, positions };
+          // Les extrémités placées à la main suivent aussi le nouveau nom.
+          const anchors = b.anchors
+            ? Object.fromEntries(
+                Object.entries(b.anchors).map(([k, v]) => {
+                  const [pair, n] = k.split('#');
+                  const [f, t] = pair.split('>');
+                  return [`${f === name ? id : f}>${t === name ? id : t}${n ? `#${n}` : ''}`, v];
+                }),
+              )
+            : undefined;
+          return { ...b, source: renamed, positions, ...(anchors ? { anchors } : {}) };
         }),
       );
       setSelectedClass(id);
@@ -418,7 +487,7 @@ export default function App() {
     const list = boardsFor(ids);
     // Un fichier par tableau ; léger décalage pour que le navigateur accepte les téléchargements successifs.
     list.forEach(({ board, diagram: d, positions: pos }, i) =>
-      window.setTimeout(() => downloadText(`${dated}-${slug(board.name)}.svg`, buildSvgString(d, computeBoxes(d, pos), sceneTheme(theme)), 'image/svg+xml'), i * 300),
+      window.setTimeout(() => downloadText(`${dated}-${slug(board.name)}.svg`, buildSvgString(d, computeBoxes(d, pos), sceneTheme(theme), board.anchors), 'image/svg+xml'), i * 300),
     );
   };
 
@@ -434,7 +503,7 @@ export default function App() {
     async (ids?: string[]) => {
       const list = boardsFor(ids);
       if (list.length === 0) return;
-      const pages = list.map(({ board, diagram: d, positions: pos }) => ({ ...buildSvg(d, computeBoxes(d, pos), PRINT), title: board.name }));
+      const pages = list.map(({ board, diagram: d, positions: pos }) => ({ ...buildSvg(d, computeBoxes(d, pos), PRINT, board.anchors), title: board.name }));
       const many = list.length > 1;
       setToast({ id: Date.now(), message: 'Préparation du PDF…', tone: 'success' });
       try {
@@ -698,7 +767,7 @@ export default function App() {
         leftOpen={editorOpen}
         left={editorPanel}
         right={
-          <ErrorBoundary resetKey={`${active.id}|${source}|${JSON.stringify(stored)}`} onUndo={undo}>
+          <ErrorBoundary resetKey={`${active.id}|${source}|${JSON.stringify(stored)}|${JSON.stringify(active.anchors ?? {})}`} onUndo={undo}>
           <Canvas
             diagram={diagram}
             positions={positions}
@@ -710,6 +779,9 @@ export default function App() {
             onSelectClass={handleSelectClass}
             selectedName={relationMode === 'custom' ? selectedClass : undefined}
             onRenameElement={handleRenameAny}
+            anchors={active.anchors}
+            onEndpointDrop={handleEndpointDrop}
+            onAnchorReset={handleAnchorReset}
             onRenameGroup={handleRenameGroup}
             onUngroup={handleUngroup}
             onDrop={handleDrop}

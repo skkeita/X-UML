@@ -86,6 +86,13 @@ export const FEATURE_SECTIONS: FeatureSection[] = [
         tags: 'lien flèche inverser',
       },
       {
+        title: 'Déplacer une extrémité de flèche',
+        text: 'Saisissez la pointe ou la queue d’une flèche. Déposée ailleurs sur le même élément, elle s’y attache (côté et position conservés) ; déposée sur un autre élément, la relation est reliée à lui.',
+        how: 'Maintenir le clic sur l’extrémité (juste à l’extérieur de l’élément) et glisser. Double-clic sur une extrémité placée à la main : placement automatique.',
+        keys: ['Échap'],
+        tags: 'pointe queue tête ancrage point d’attache reconnecter relier',
+      },
+      {
         title: 'Sélection multiple',
         text: 'Sélectionne plusieurs éléments pour les déplacer ensemble ou leur appliquer une action.',
         how: 'Shift+clic sur des éléments, ou Shift+glisser dans le vide pour tracer un rectangle.',

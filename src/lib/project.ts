@@ -1,3 +1,4 @@
+import type { EdgeAnchors } from '../core/routing';
 import type { DiagramType, Point, Positions } from '../core/types';
 
 /*
@@ -13,6 +14,8 @@ export interface Board {
   positions: Positions;
   /** Type de diagramme choisi pour ce tableau (vocabulaire, éléments proposés). Absent : déduit du contenu. */
   type?: DiagramType;
+  /** Extrémités de flèches placées à la main (clé : relationKey). Comme les positions, hors du script. */
+  anchors?: Record<string, EdgeAnchors>;
 }
 
 export interface Project {
@@ -39,6 +42,24 @@ export function cleanPositions(raw: unknown): Positions {
   return out;
 }
 
+const SIDES = ['top', 'right', 'bottom', 'left'];
+const isAnchor = (v: unknown): boolean =>
+  typeof v === 'object' && v !== null && SIDES.includes((v as { side: string }).side) && Number.isFinite((v as { t: number }).t);
+
+/** Ne garde que les ancrages valides (fichier modifié à la main, ancienne version…). */
+export function cleanAnchors(raw: unknown): Record<string, EdgeAnchors> | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const out: Record<string, EdgeAnchors> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, { start?: unknown; end?: unknown }>)) {
+    if (typeof v !== 'object' || v === null) continue;
+    const e: EdgeAnchors = {};
+    if (isAnchor(v.start)) e.start = v.start as EdgeAnchors['start'];
+    if (isAnchor(v.end)) e.end = v.end as EdgeAnchors['end'];
+    if (e.start || e.end) out[k] = e;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** Lit un tableau venant d'un fichier ou du stockage (null s'il est inutilisable). */
 export function cleanBoard(raw: unknown, fallbackName: string): Board | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -50,6 +71,7 @@ export function cleanBoard(raw: unknown, fallbackName: string): Board | null {
     source: b.source,
     positions: cleanPositions(b.positions),
     ...(TYPES.includes(b.type as DiagramType) ? { type: b.type } : {}),
+    ...(cleanAnchors(b.anchors) ? { anchors: cleanAnchors(b.anchors) } : {}),
   };
 }
 

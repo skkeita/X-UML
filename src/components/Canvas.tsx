@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } 
 import type { RelationChange, RelationRef } from '../core/edit';
 import { changeForChoice, relationChoiceOf, targetPhrase, type RelationChoice, type Vocabulary } from '../core/vocabulary';
 import { GRID, boundsOf, computeScene, legendBox, snap } from '../core/layout';
+import { anchorAt, relationKey, type Anchor, type EdgeAnchors } from '../core/routing';
 import type { SceneTheme } from '../core/theme';
 import type { Diagram, DiagramType, Group, Point, Positions, Relation, RelationKind } from '../core/types';
 import { DiagramScene } from './DiagramScene';
@@ -30,6 +31,12 @@ interface Props {
   onDuplicate?: (names: string[]) => string[];
   onColor?: (names: string[], color: string | null, label: string) => void;
   onCreatePackage?: (title: string, names: string[]) => void;
+  /** Extrémités de flèches placées à la main (clé : relationKey). */
+  anchors?: Record<string, EdgeAnchors>;
+  /** Extrémité lâchée sur un élément : même élément → nouveau point d'attache ; autre élément → relation reliée à lui. */
+  onEndpointDrop?: (index: number, which: 'start' | 'end', target: string, anchor: Anchor) => void;
+  /** Double-clic sur une extrémité placée à la main : retour au placement automatique. */
+  onAnchorReset?: (index: number, which: 'start' | 'end') => void;
   /** Renommer un élément (double-clic) : nom d'une classe / d'un objet, libellé des autres. */
   onRenameElement?: (name: string, text: string) => void;
   /** Titre d'un groupe (paquetage, système, cadre) et dégroupement. */
@@ -56,7 +63,9 @@ type Drag =
   | { type: 'move'; names: string[]; start: Point; orig: Record<string, Point>; moved: boolean }
   | { type: 'lasso'; start: Point; additive: boolean }
   | { type: 'pan'; sx: number; sy: number; vx: number; vy: number }
-  | { type: 'link'; from: string; origin: Point; moved: boolean };
+  | { type: 'link'; from: string; origin: Point; moved: boolean }
+  /** Extrémité d'une relation saisie : on la déplace sur l'élément ou vers un autre élément. */
+  | { type: 'end'; index: number; which: 'start' | 'end'; line: number; moved: boolean; origin: Point };
 
 /**
  * Création d'un lien depuis une poignée :
@@ -92,6 +101,9 @@ export function Canvas({
   onCreatePackage,
   emptyHint,
   onRenameElement,
+  anchors,
+  onEndpointDrop,
+  onAnchorReset,
   onRenameGroup,
   onUngroup,
   onTypeSelection,
@@ -114,13 +126,15 @@ export function Canvas({
   const [panning, setPanning] = useState(false);
   const [link, setLink] = useState<LinkState | null>(null);
   const [cursor, setCursor] = useState<Point | null>(null);
+  /** Extrémité en cours de déplacement (pour le trait élastique et la cible mise en évidence). */
+  const [endDrag, setEndDrag] = useState<{ index: number; which: 'start' | 'end'; fixed: Point; at: Point } | null>(null);
   /** Sélection multiple (Shift+clic, Shift+glisser, clic sur un cadre). */
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [lasso, setLasso] = useState<{ a: Point; b: Point } | null>(null);
   /** Glisser en cours (le menu de sélection se cache pendant le mouvement). */
   const [dragging, setDragging] = useState(false);
 
-  const scene = useMemo(() => computeScene(diagram, positions), [diagram, positions]);
+  const scene = useMemo(() => computeScene(diagram, positions, anchors), [diagram, positions, anchors]);
   const { boxes, edges, frames } = scene;
   // Un élément sélectionné qui disparaît du code sort de la sélection.
   const selected2 = useMemo(() => new Set([...selection].filter((n) => boxes[n])), [selection, boxes]);
@@ -139,6 +153,30 @@ export function Canvas({
       if (b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return name;
     }
     return null;
+  };
+
+  /**
+   * Élément visé par une extrémité de flèche : celui sous le pointeur, sinon le plus proche dont le bord
+   * est à moins de ~16 px écran (on vise naturellement le bord, pas l'intérieur).
+   */
+  const boxNear = (p: Point): string | null => {
+    const inside = boxAt(p);
+    if (inside) return inside;
+    const tol = 16 / view.k;
+    let best: string | null = null;
+    let bestD = tol;
+    for (const c of diagram.classes) {
+      const b = boxes[c.name];
+      if (!b) continue;
+      const dx = Math.max(b.x - p.x, 0, p.x - (b.x + b.w));
+      const dy = Math.max(b.y - p.y, 0, p.y - (b.y + b.h));
+      const d = Math.hypot(dx, dy);
+      if (d <= bestD) {
+        bestD = d;
+        best = c.name;
+      }
+    }
+    return best;
   };
 
   /** Coordonnées écran → coordonnées « monde » (avant pan/zoom). */
@@ -199,7 +237,11 @@ export function Canvas({
     const n = Number(e.key);
     const digit = Number.isInteger(n) && n >= 1 && n <= vocab.relations.length ? vocab.relations[n - 1] : null;
 
-    if (e.key === 'Escape' && (link || activeRef || selected2.size > 0)) {
+    if (e.key === 'Escape' && endDrag) {
+      // Abandon du déplacement d'une extrémité : la flèche reste où elle était.
+      drag.current = null;
+      setEndDrag(null);
+    } else if (e.key === 'Escape' && (link || activeRef || selected2.size > 0)) {
       setLink(null);
       setSelectedEdge(null);
       setSelection(new Set());
@@ -290,6 +332,46 @@ export function Canvas({
   };
 
   // --- Pointeur -------------------------------------------------------------------------------
+
+  /**
+   * Poignées d'extrémité : posées sur la pointe (ou la queue) de la flèche, juste à l'extérieur de
+   * l'élément — distinctes des poignées rondes du bord qui créent une nouvelle relation.
+   */
+  const grips = useMemo(() => {
+    const out: { index: number; which: 'start' | 'end'; at: Point; tip: Point; other: Point; line: number; pinned: boolean }[] = [];
+    for (const e of edges) {
+      const index = diagram.relations.indexOf(e.relation);
+      if (index < 0 || e.points.length < 2 || e.relation.from === e.relation.to) continue;
+      const key = relationKey(diagram.relations, index);
+      for (const which of ['start', 'end'] as const) {
+        const tip = which === 'start' ? e.points[0] : e.points[e.points.length - 1];
+        const next = which === 'start' ? e.points[1] : e.points[e.points.length - 2];
+        const len = Math.hypot(next.x - tip.x, next.y - tip.y) || 1;
+        const d = Math.min(9, len / 2);
+        out.push({
+          index,
+          which,
+          tip,
+          at: { x: tip.x + ((next.x - tip.x) / len) * d, y: tip.y + ((next.y - tip.y) / len) * d },
+          other: which === 'start' ? e.points[e.points.length - 1] : e.points[0],
+          line: e.relation.line,
+          pinned: !!anchors?.[key]?.[which],
+        });
+      }
+    }
+    return out;
+  }, [edges, diagram.relations, anchors]);
+
+  const onGripDown = (g: (typeof grips)[number], e: React.PointerEvent<SVGCircleElement>) => {
+    if (!onEndpointDrop || e.shiftKey) return;
+    e.stopPropagation();
+    setLink(null);
+    setSelected(null);
+    const w = toWorld(e.clientX, e.clientY);
+    drag.current = { type: 'end', index: g.index, which: g.which, line: g.line, moved: false, origin: w };
+    setEndDrag({ index: g.index, which: g.which, fixed: g.other, at: g.tip });
+    svgRef.current?.setPointerCapture(e.pointerId);
+  };
 
   const onEdgeDown = (relation: Relation, e: React.PointerEvent<SVGGElement>) => {
     e.stopPropagation();
@@ -391,6 +473,11 @@ export function Canvas({
       setLasso({ a: d.start, b: w });
       return;
     }
+    if (d.type === 'end') {
+      if (Math.hypot(w.x - d.origin.x, w.y - d.origin.y) * view.k > DRAG_THRESHOLD_PX) d.moved = true;
+      setEndDrag((cur) => (cur ? { ...cur, at: w } : cur));
+      return;
+    }
     // Déplacement : même décalage pour tous les éléments ; aimantation sur la grille (Alt = libre).
     const dx = w.x - d.start.x;
     const dy = w.y - d.start.y;
@@ -419,6 +506,15 @@ export function Canvas({
       setSelection((s) => new Set([...(d.additive ? s : []), ...hit]));
       setLasso(null);
     }
+    if (d?.type === 'end') {
+      const w = toWorld(e.clientX, e.clientY);
+      if (d.moved) {
+        // Lâchée sur un élément : point d'attache choisi (même élément) ou relation reliée à lui (autre élément).
+        const target = boxNear(w);
+        if (target && boxes[target]) onEndpointDrop?.(d.index, d.which, target, anchorAt(boxes[target], w));
+      } else setSelectedEdge(d.line); // simple clic : la relation est sélectionnée, comme un clic sur le trait
+      setEndDrag(null);
+    }
     if (d?.type === 'link') {
       const w = toWorld(e.clientX, e.clientY);
       if (d.moved) {
@@ -437,6 +533,7 @@ export function Canvas({
 
   const onPointerCancel = () => {
     if (drag.current?.type === 'link') setLink(null);
+    setEndDrag(null);
     setLasso(null);
     setDragging(false);
     drag.current = null;
@@ -447,6 +544,11 @@ export function Canvas({
   const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     // Par coordonnées : pendant un glisser, le pointeur est capturé par le canevas (la cible n'est pas l'élément).
     const w = toWorld(e.clientX, e.clientY);
+    const grip = grips.find((g) => g.pinned && Math.hypot(g.at.x - w.x, g.at.y - w.y) * view.k < 12);
+    if (grip && onAnchorReset) {
+      onAnchorReset(grip.index, grip.which);
+      return;
+    }
     const name = boxAt(w);
     if (name && onRenameElement) {
       setRenaming({ type: 'element', name });
@@ -482,14 +584,27 @@ export function Canvas({
         ? { from: link.origin, to: link.at }
         : null;
   const hovered = link && link.phase !== 'choose' && cursor ? boxAt(cursor) : null;
-  const highlighted =
-    link?.phase === 'choose' ? link.to : link?.phase === 'drag' ? (hovered !== link.from ? hovered : null) : hovered;
+  const highlighted = endDrag
+    ? boxNear(endDrag.at)
+    : link?.phase === 'choose'
+      ? link.to
+      : link?.phase === 'drag'
+        ? hovered !== link.from
+          ? hovered
+          : null
+        : hovered;
 
   const targetLabel = link?.phase === 'target' ? link.choice.label : null;
   const bounds = { w: svgRef.current?.clientWidth ?? 800, h: svgRef.current?.clientHeight ?? 600 };
   const gridSize = GRID * 4 * view.k;
   const isEmpty = diagram.classes.length === 0;
-  const cursorClass = link?.phase === 'target' || link?.phase === 'drag' ? 'cursor-crosshair' : panning ? 'cursor-grabbing' : 'cursor-default';
+  const cursorClass = endDrag
+    ? 'cursor-grabbing'
+    : link?.phase === 'target' || link?.phase === 'drag'
+      ? 'cursor-crosshair'
+      : panning
+        ? 'cursor-grabbing'
+        : 'cursor-default';
 
   return (
     <div className="relative h-full w-full overflow-hidden" style={{ background: theme.bg }}>
@@ -554,6 +669,57 @@ export function Canvas({
                 strokeDasharray={`${6 / view.k} ${4 / view.k}`}
               />
               <circle cx={rubber.to.x} cy={rubber.to.y} r={4 / view.k} fill={theme.accent} />
+            </g>
+          )}
+
+          {/* Extrémités de flèches : saisir la pointe ou la queue et la déposer ailleurs */}
+          {onEndpointDrop && !link && !dragging && !lasso && (
+            <g data-grips="">
+              {grips.map((g) => {
+                const active = selectedEdge === g.line || endDrag?.index === g.index;
+                return (
+                  <g key={`${g.index}-${g.which}`} className="group" data-grip={`${g.line}-${g.which}`}>
+                    <circle
+                      cx={g.at.x}
+                      cy={g.at.y}
+                      r={7}
+                      fill="transparent"
+                      style={{ cursor: 'grab' }}
+                      onPointerDown={(e) => onGripDown(g, e)}
+                    >
+                      <title>
+                        {g.pinned
+                          ? 'Glisser pour déplacer cette extrémité · double-clic : placement automatique'
+                          : 'Glisser pour déplacer cette extrémité (sur l’élément ou vers un autre)'}
+                      </title>
+                    </circle>
+                    <circle
+                      cx={g.at.x}
+                      cy={g.at.y}
+                      r={3.5}
+                      fill={g.pinned ? theme.accent : theme.bg}
+                      stroke={theme.accent}
+                      strokeWidth={1.4}
+                      pointerEvents="none"
+                      className={active ? '' : 'opacity-0 transition-opacity group-hover:opacity-100'}
+                    />
+                  </g>
+                );
+              })}
+            </g>
+          )}
+          {endDrag && (
+            <g pointerEvents="none" data-end-drag="">
+              <line
+                x1={endDrag.fixed.x}
+                y1={endDrag.fixed.y}
+                x2={endDrag.at.x}
+                y2={endDrag.at.y}
+                stroke={theme.accent}
+                strokeWidth={1.6 / view.k}
+                strokeDasharray={`${6 / view.k} ${4 / view.k}`}
+              />
+              <circle cx={endDrag.at.x} cy={endDrag.at.y} r={4.5 / view.k} fill={theme.accent} />
             </g>
           )}
         </g>
@@ -681,6 +847,12 @@ export function Canvas({
       {/* Menu : création d'un lien depuis une poignée */}
       {link?.phase === 'choose' && (
         <RelationPicker {...toScreen(link.at)} bounds={bounds} from={link.from} to={link.to} choices={vocab.relations} onPick={pickForNewLink} onClose={() => setLink(null)} />
+      )}
+
+      {endDrag && (
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1.5 text-xs text-white shadow-md">
+          Déposez sur le même élément pour choisir le point d’attache, ou sur un autre pour y relier la flèche · Échap pour annuler
+        </div>
       )}
 
       {link?.phase === 'target' && (
