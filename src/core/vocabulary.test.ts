@@ -33,10 +33,10 @@ describe('vocabulaire selon le type de diagramme', () => {
 
   it('résumé avec les bons mots et les bons pluriels', () => {
     const d = parse('actor A\nactor B\nusecase C\nA -- C\nB -- C').diagram;
-    expect(summarize(VOCABULARIES.usecase, d)).toBe('2 acteurs · 1 cas d’utilisation · 2 relations');
+    expect(summarize(VOCABULARIES.usecase, d)).toBe('2 acteurs, 1 cas d’utilisation, 2 relations');
     const c = parse('abstract class A\nclass B extends A').diagram;
-    expect(summarize(VOCABULARIES.class, c)).toBe('2 classes · 1 relation');
+    expect(summarize(VOCABULARIES.class, c)).toBe('2 classes, 1 relation');
     const m = parse('object a\nobject b\na --> b : 1: x()').diagram;
-    expect(summarize(VOCABULARIES.communication, m)).toBe('2 objets · 1 message');
+    expect(summarize(VOCABULARIES.communication, m)).toBe('2 objets, 1 message');
   });
 });

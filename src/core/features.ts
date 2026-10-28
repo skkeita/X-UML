@@ -270,6 +270,43 @@ export const FEATURE_SECTIONS: FeatureSection[] = [
     ],
   },
   {
+    id: 'tools',
+    title: 'Outils de modélisation',
+    items: [
+      {
+        title: 'Notes',
+        text: 'Un commentaire au coin plié, rattaché par un trait pointillé à un ou plusieurs éléments (ou libre). Inclus dans les exports.',
+        how: 'Menu de sélection : « Note », ou « Ajouter » → Note. Double-clic sur la note pour la modifier.',
+        code: 'note N1 "Calculé chaque nuit" : Commande, Facture',
+        tags: 'commentaire annotation post-it remarque',
+      },
+      {
+        title: 'Aligner et répartir',
+        text: 'Aligne une sélection à gauche, au centre, à droite, en haut, au milieu ou en bas, ou la répartit à intervalles égaux. Les éléments ne se chevauchent jamais.',
+        how: 'Sélectionner au moins deux éléments (Shift+clic), puis « Aligner ».',
+        tags: 'alignement distribuer espacer ranger',
+      },
+      {
+        title: 'Copier / coller',
+        text: 'Copie les éléments choisis avec leurs relations internes, leurs notes, leurs couleurs et leur disposition. Collez dans le même tableau ou dans un autre onglet ; les noms en double sont renommés.',
+        keys: ['Ctrl+C', 'Ctrl+X', 'Ctrl+V'],
+        tags: 'presse-papiers couper',
+      },
+      {
+        title: 'Vérification du modèle',
+        text: 'Relit le diagramme comme un correcteur : héritage circulaire, classe qui « hérite » d’une interface, élément isolé, nom en double, membre déclaré deux fois… Cliquer sur une remarque sélectionne les éléments concernés.',
+        how: 'Badge en bas à droite du diagramme.',
+        tags: 'erreurs validation contrôle correction avertissements',
+      },
+      {
+        title: 'Mini-carte',
+        text: 'Vue d’ensemble des grands diagrammes avec la zone affichée ; cliquer ou glisser dans la carte pour s’y déplacer.',
+        how: 'Apparaît en bas à droite dès que le diagramme dépasse la fenêtre.',
+        tags: 'navigation aperçu minimap',
+      },
+    ],
+  },
+  {
     id: 'boards',
     title: 'Tableaux (onglets)',
     items: [
@@ -287,6 +324,19 @@ export const FEATURE_SECTIONS: FeatureSection[] = [
       { title: 'Projet X-UML (.json)', text: 'Le contenu et la disposition des tableaux, pour reprendre le travail plus tard.', how: 'Exporter → Projet. Ctrl+S exporte tous les tableaux.', keys: ['Ctrl+S'], tags: 'sauvegarder enregistrer' },
       { title: 'Code du diagramme (.txt)', text: 'Le script seul : à lire, à versionner (Git) ou à réimporter.', how: 'Exporter → Code du diagramme.' },
       { title: 'Image (.svg)', text: 'Nette à toutes les tailles, pour un rapport ou un site ; une image par tableau coché.', how: 'Exporter → Image du diagramme.' },
+      {
+        title: 'Générer le code',
+        text: 'Le diagramme de classes devient des squelettes Java (un fichier par classe, en .zip), TypeScript ou Python : attributs typés, signatures, extends / implements, associations navigables.',
+        how: 'Exporter → Code source (Java, TypeScript, Python).',
+        tags: 'java typescript python codegen squelette programmation',
+      },
+      {
+        title: 'Lien de partage',
+        text: 'Le tableau affiché tient dans un lien : la personne qui l’ouvre en reçoit une copie dans un nouvel onglet. Rien n’est envoyé à un serveur.',
+        how: 'Exporter → Copier un lien de partage.',
+        tags: 'partager url envoyer collègue',
+      },
+      { title: 'Importer du code Java', text: 'Un ou plusieurs fichiers .java deviennent un diagramme de classes (classes, interfaces, énumérations, records, héritage, attributs, méthodes) dans un nouvel onglet.', how: 'Bouton Importer ou glisser-déposer des fichiers .java.', tags: 'rétro-ingénierie reverse java' },
       { title: 'Importer', text: 'Un projet .json (tous ses tableaux), ou un script .txt / .xuml / .puml (PlantUML) qui devient un tableau.', how: 'Bouton Importer, ou glisser-déposer le fichier sur la fenêtre.', keys: ['Ctrl+O'], tags: 'ouvrir plantuml' },
     ],
   },
@@ -295,6 +345,18 @@ export const FEATURE_SECTIONS: FeatureSection[] = [
     title: 'Sauvegarde et annulation',
     items: [
       { title: 'Sauvegarde automatique', text: 'Tout est enregistré dans le navigateur au fil de l’eau, sans compte ni serveur. L’indicateur en haut à gauche le confirme.', tags: 'local hors ligne' },
+      {
+        title: 'Confidentialité et mentions légales',
+        text: 'Aucune donnée collectée : pas de compte, de serveur, de cookie ni de statistiques. Vos diagrammes restent dans votre navigateur ; vous pouvez les effacer à tout moment.',
+        how: 'Lien « Mentions légales » en bas à droite du diagramme (onglets Mentions légales, Confidentialité, Licences).',
+        tags: 'rgpd cnil vie privée cookies licence mit open source hébergeur',
+      },
+      {
+        title: 'Historique des versions',
+        text: 'Un instantané du projet est pris toutes les 10 minutes, à l’ouverture et avant chaque import : aperçu et restauration en un clic (annulable).',
+        how: 'Bouton horloge de la barre du haut.',
+        tags: 'versions restaurer revenir sauvegarde ancienne',
+      },
       { title: 'Annuler / rétablir', text: 'Toute action est annulable : frappe, déplacement, suppression, couleur, onglet…', keys: ['Ctrl+Z', 'Ctrl+Y'], how: 'Ou les flèches de la barre du haut.' },
     ],
   },
@@ -306,6 +368,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'Ctrl+Z', action: 'Annuler' },
   { keys: 'Ctrl+Y · Ctrl+Maj+Z', action: 'Rétablir' },
   { keys: 'Ctrl+D', action: 'Dupliquer la sélection' },
+  { keys: 'Ctrl+C · Ctrl+X · Ctrl+V', action: 'Copier, couper, coller (aussi vers un autre onglet)' },
   { keys: 'Suppr', action: 'Supprimer la sélection ou la relation choisie' },
   { keys: 'Échap', action: 'Désélectionner, fermer un menu, annuler une relation en cours' },
   { keys: '1, 2, 3…', action: 'Type de la relation choisie ou en cours de création (dans l’ordre du menu)' },

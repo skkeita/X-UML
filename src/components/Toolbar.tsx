@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
-import { BookIcon, CodeIcon, DownloadIcon, ImageIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
+import { BookIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -18,6 +18,10 @@ interface Props {
   onImport: () => void;
   onExportPdf: (ids: string[]) => void;
   onExportCode: (ids: string[]) => void;
+  onShowCodegen: () => void;
+  onShareLink: () => void;
+  /** Historique des versions locales. */
+  onShowVersions: () => void;
   saveStatus: SaveStatus;
   onUndo: () => void;
   onRedo: () => void;
@@ -61,8 +65,8 @@ function Button({
       title={title}
       aria-pressed={pressed}
       disabled={disabled}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-slate-700 transition-colors disabled:pointer-events-none disabled:opacity-35 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-slate-200 dark:hover:bg-slate-800 ${
-        pressed ? 'bg-slate-100 dark:bg-slate-800' : ''
+      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-slate-200 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300 disabled:pointer-events-none disabled:opacity-35 ${
+        pressed ? 'bg-white/10 text-white' : ''
       }`}
     >
       {children}
@@ -73,16 +77,18 @@ function Button({
 export function Toolbar(p: Props) {
   const status = STATUS[p.saveStatus];
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 dark:border-slate-800 dark:bg-slate-950">
+    // Barre d'encre : l'identité de l'application (identique en thème clair et sombre).
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-ink-line bg-ink px-3 text-white">
       <div className="flex items-center gap-3">
         <Button onClick={p.onToggleEditor} title="Afficher / masquer l’éditeur (Ctrl+B)" pressed={p.editorOpen}>
           <PanelIcon />
         </Button>
-        <span className="text-[15px] font-semibold tracking-tight">
-          X<span className="text-indigo-500">-</span>UML
+        <span className="flex items-center gap-2 select-none">
+          <Logo />
+          <span className="text-[15px] font-semibold tracking-tight text-white">X-UML</span>
         </span>
         {/* Indicateur discret : rassure sans jamais demander d'action */}
-        <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex dark:text-slate-400" role="status" aria-live="polite">
+        <span className="hidden items-center gap-1.5 text-xs text-slate-300 sm:flex" role="status" aria-live="polite">
           <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
           {status.label}
         </span>
@@ -90,7 +96,7 @@ export function Toolbar(p: Props) {
 
       <div className="flex items-center gap-1">
         {/* Mode d'édition : script (Code) ou construction à la souris (Visuel) — le script reste la référence */}
-        <div role="radiogroup" aria-label="Mode d’édition" className="mr-1 hidden rounded-lg bg-slate-100 p-0.5 md:flex dark:bg-slate-800">
+        <div role="radiogroup" aria-label="Mode d’édition" className="mr-1 hidden rounded-lg bg-black/25 p-0.5 md:flex">
           {(
             [
               ['simple', 'Code', 'Mode Code : le diagramme s’écrit sous forme de script, relations comprises — le plus rapide au clavier.'],
@@ -104,10 +110,8 @@ export function Toolbar(p: Props) {
               aria-checked={p.relationMode === value}
               title={title}
               onClick={() => p.onRelationModeChange(value)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                p.relationMode === value
-                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-600 dark:text-white'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                p.relationMode === value ? 'bg-white text-ink shadow-sm' : 'text-slate-300 hover:text-white'
               }`}
             >
               {label}
@@ -121,13 +125,16 @@ export function Toolbar(p: Props) {
         <Button onClick={p.onRedo} title="Rétablir (Ctrl+Y ou Ctrl+Maj+Z)" disabled={!p.canRedo}>
           <RedoIcon />
         </Button>
-        <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+        <Button onClick={p.onShowVersions} title="Historique des versions : revenir à l’état d’il y a 10 minutes, une heure, hier…">
+          <HistoryIcon />
+        </Button>
+        <span className="mx-1 h-5 w-px bg-white/15" aria-hidden="true" />
         <StyleMenu {...p} />
         <Button onClick={p.onImport} title="Importer un projet (Ctrl+O) — ou glissez le fichier sur la fenêtre">
           <UploadIcon />
           <span className="hidden sm:inline">Importer</span>
         </Button>
-        <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportCode={p.onExportCode} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
+        <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportCode={p.onExportCode} onShowCodegen={p.onShowCodegen} onShareLink={p.onShareLink} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
         <Button onClick={p.onShowFeatures} title="Toutes les fonctionnalités et les raccourcis (F1)">
           <BookIcon />
           <span className="hidden xl:inline">Fonctionnalités</span>
@@ -149,6 +156,8 @@ function ExportMenu({
   activeId,
   onExportPdf,
   onExportCode,
+  onShowCodegen,
+  onShareLink,
   onExportSvg,
   onExportProject,
 }: {
@@ -156,6 +165,8 @@ function ExportMenu({
   activeId: string;
   onExportPdf: (ids: string[]) => void;
   onExportCode: (ids: string[]) => void;
+  onShowCodegen: () => void;
+  onShareLink: () => void;
   onExportSvg: (ids: string[]) => void;
   onExportProject: (ids: string[]) => void;
 }) {
@@ -232,7 +243,7 @@ function ExportMenu({
                   <label key={b.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800">
                     <input type="checkbox" checked={chosen.includes(b.id)} onChange={() => toggle(b.id)} className="h-3.5 w-3.5 accent-indigo-600" />
                     <span className="truncate">{b.name}</span>
-                    {b.id === activeId && <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-slate-400">affiché</span>}
+                    {b.id === activeId && <span className="ml-auto shrink-0 text-[11px] text-slate-400">affiché</span>}
                   </label>
                 ))}
               </div>
@@ -257,6 +268,10 @@ function ExportMenu({
             onExportCode,
           )}
           {item(<ImageIcon />, 'Image du diagramme (.svg)', n > 1 ? `Une image par tableau (${n} fichiers)` : 'Nette à toutes les tailles, pour un rapport ou un site', onExportSvg)}
+          <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+          <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Tableau affiché</p>
+          {item(<CodeIcon />, 'Code source (Java, TypeScript, Python)…', 'Squelettes des classes : attributs, signatures, héritage', () => onShowCodegen())}
+          {item(<LinkIcon />, 'Copier un lien de partage', 'Le diagramme tient dans le lien : aucun compte, aucun serveur', () => onShareLink())}
           {n === 0 && <p className="px-2.5 pb-1.5 text-xs text-amber-600 dark:text-amber-400">Coche au moins un tableau.</p>}
         </div>
       )}
@@ -335,5 +350,16 @@ function StyleMenu(p: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Marque X-UML : une boîte de classe UML (nom, attributs, opérations) tracée au cobalt. */
+function Logo() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="19" height="19" rx="3.5" fill="#1F5FAD" />
+      <rect x="5" y="5" width="12" height="12" rx="1.2" fill="none" stroke="#fff" strokeWidth="1.5" />
+      <path d="M5 9.2h12M5 13h12" stroke="#fff" strokeWidth="1.3" />
+    </svg>
   );
 }

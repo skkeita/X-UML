@@ -31,7 +31,7 @@ export interface RelationRef {
   to: string;
   /** Liaison créée automatiquement à partir du code. */
   auto?: boolean;
-  via?: 'extends' | 'implements' | 'member';
+  via?: 'extends' | 'implements' | 'member' | 'note';
   /** Type actuel (utile pour une liaison déduite, qu'on réécrit à l'identique sauf changement). */
   kind?: RelationKind;
 }
@@ -103,6 +103,11 @@ const relationText = (a: string, ma: string | undefined, op: string, mb: string 
 
 /** Change le type et/ou le sens d'une relation. Renvoie le source inchangé si la ligne ne correspond plus. */
 export function updateRelation(source: string, ref: RelationRef, change: RelationChange): string {
+  // Lien d'une note : seule la cible peut changer (glisser l'extrémité sur un autre élément).
+  if (ref.via === 'note') {
+    if (change.to && change.to !== ref.to) return setNoteTargets(source, ref.from, (ts) => [...ts.filter((t) => t !== ref.to && t !== change.to), change.to!]);
+    return source;
+  }
   if (ref.auto && ref.via === 'member') return detachMemberRelation(source, ref, change);
   if (ref.auto) return updateAutoRelation(source, ref, change);
   const p = locate(source, ref);
@@ -149,6 +154,8 @@ export function addRelation(source: string, from: string, to: string, kind: Rela
 
 /** Supprime la ligne de la relation (ou retire le parent de « extends » / « implements »). */
 export function deleteRelation(source: string, ref: RelationRef): string {
+  // Lien d'une note : on retire la cible de la ligne « note » (la note reste).
+  if (ref.via === 'note') return setNoteTargets(source, ref.from, (ts) => ts.filter((t) => t !== ref.to));
   // Liaison déduite d'un attribut / d'une méthode : elle disparaît en retirant la référence du code.
   if (ref.auto && ref.via === 'member') return source;
   if (ref.auto) {
@@ -294,7 +301,7 @@ export function addDiagramFrame(source: string, type: DiagramType, title: string
   return appendLine(source, `diagram ${type}${t ? ` "${t}"` : ''} : ${members.join(', ')}`);
 }
 
-const DECL_HEAD = /^\s*(?:abstract\s+class|class|interface|enum|actor|usecase|object|system|package)\s+([\p{L}_][\p{L}\p{N}_]*)/u;
+const DECL_HEAD = /^\s*(?:abstract\s+class|class|interface|enum|actor|usecase|object|system|package|note)\s+([\p{L}_][\p{L}\p{N}_]*)/u;
 const GROUP_LINE = /^(\s*(?:package|system)\s+[\p{L}_][\p{L}\p{N}_]*(?:\s+"[^"]*")?\s*:\s*|\s*diagram\s+\w+(?:\s+"[^"]*")?\s*:\s*)(.+)$/u;
 
 /**
@@ -324,6 +331,13 @@ export function deleteNodes(source: string, names: string[]): string {
       const members = g[2].split(',').map((m) => m.trim()).filter((m) => m && !gone.has(m));
       if (members.length === 0) continue;
       out.push(`${g[1]}${members.join(', ')}`);
+      continue;
+    }
+    // Note : on retire de sa liste les éléments supprimés (la note reste, sauf si c'est elle qu'on supprime).
+    const noteLine = NOTE_LINE_RE.exec(code);
+    if (noteLine && !gone.has(noteLine[2])) {
+      const targets = (noteLine[3] ?? '').split(',').map((t) => t.trim()).filter((t) => t && !gone.has(t));
+      out.push(`${noteLine[1]}${targets.length ? ` : ${targets.join(', ')}` : ''}`);
       continue;
     }
     const head = DECL_HEAD.exec(code);
@@ -490,4 +504,45 @@ export function ungroup(source: string, group: { name: string; kind: 'package' |
   if (i < 0 || i >= lines.length || !/^\s*diagram\s/.test(lines[i])) return source;
   lines.splice(i, 1);
   return lines.join('\n');
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Notes UML                                                           */
+/* ------------------------------------------------------------------ */
+
+const NOTE_LINE_RE = /^(\s*note\s+([\p{L}_][\p{L}\p{N}_]*)\s+"(?:[^"\\]|\\.)*")(?:\s*:\s*(.+?))?\s*$/u;
+
+/** Modifie la liste des éléments auxquels une note est rattachée. */
+export function setNoteTargets(source: string, note: string, fn: (targets: string[]) => string[]): string {
+  return source
+    .split('\n')
+    .map((raw) => {
+      const ci = raw.indexOf('//');
+      const code = ci < 0 ? raw : raw.slice(0, ci);
+      const m = NOTE_LINE_RE.exec(code);
+      if (!m || m[2] !== note) return raw;
+      const targets = fn((m[3] ?? '').split(',').map((t) => t.trim()).filter(Boolean));
+      return `${m[1]}${targets.length ? ` : ${targets.join(', ')}` : ''}${ci < 0 ? '' : ` ${raw.slice(ci)}`}`;
+    })
+    .join('\n');
+}
+
+/** Ajoute une note (rattachée aux éléments donnés) ; renvoie le script et le nom de la note. */
+export function addNote(source: string, text: string, targets: string[]): { source: string; name: string } {
+  const used = new Set(source.match(/[\p{L}_][\p{L}\p{N}_]*/gu) ?? []);
+  let i = 1;
+  while (used.has(`Note${i}`)) i++;
+  const name = `Note${i}`;
+  const body = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n');
+  return { source: appendLine(source, `note ${name} "${body}"${targets.length ? ` : ${targets.join(', ')}` : ''}`), name };
+}
+
+/** Change le texte d'une note. */
+export function setNoteText(source: string, note: string, text: string): string {
+  const body = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n');
+  return source
+    .split('\n')
+    .map((raw) => raw.replace(new RegExp(`^(\\s*note\\s+${note}\\s+)"(?:[^"\\\\]|\\\\.)*"`, 'u'), (_, head) => `${head}"${body}"`))
+    .join('\n');
 }

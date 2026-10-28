@@ -115,6 +115,13 @@ export function normalizeColor(v: string): string {
   return h.length === 4 ? `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}` : h;
 }
 
+/** note N1 "Texte (\n pour aller à la ligne)" : Cible1, Cible2 — la liste des cibles est facultative. */
+const NOTE = new RegExp(`^note\\s+(${IDENT})\\s+"((?:[^"\\\\]|\\\\.)*)"(?:\\s*:\\s*(${LIST}))?$`, 'u');
+/** Texte d'une note tel qu'affiché (\n → retour à la ligne, \" → guillemet). */
+export const noteText = (raw: string): string => raw.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+/** Inverse : texte saisi → forme écrite dans le script. */
+export const noteSource = (text: string): string => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n');
+
 const FRAME_TITLE: Record<DiagramType, string> = {
   class: 'Diagramme de classes',
   usecase: 'Cas d’utilisation',
@@ -239,6 +246,22 @@ export function parse(source: string): ParseResult {
         members,
         line: lineNo,
       });
+      continue;
+    }
+
+    // 2b) Note UML, rattachée (ou non) à des éléments par un trait pointillé
+    const note = NOTE.exec(line);
+    if (note) {
+      const [, name, raw, list] = note;
+      const node = ensureClass(name, lineNo);
+      node.kind = 'note';
+      node.implicit = false;
+      node.line = lineNo;
+      node.label = noteText(raw);
+      for (const target of (list ?? '').split(',').map((m) => m.trim()).filter(Boolean)) {
+        ensureClass(target, lineNo, true);
+        relations.push({ from: name, to: target, kind: 'association', line: lineNo, auto: true, via: 'note' });
+      }
       continue;
     }
 

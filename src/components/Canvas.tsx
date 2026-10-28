@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import type { RelationChange, RelationRef } from '../core/edit';
 import { changeForChoice, relationChoiceOf, targetPhrase, type RelationChoice, type Vocabulary } from '../core/vocabulary';
+import { alignBoxes } from '../core/align';
+import { validate, type Issue } from '../core/validate';
 import { GRID, boundsOf, computeScene, legendBox, snap } from '../core/layout';
 import { anchorAt, relationKey, type Anchor, type EdgeAnchors } from '../core/routing';
 import type { SceneTheme } from '../core/theme';
 import type { Diagram, DiagramType, Group, Point, Positions, Relation, RelationKind } from '../core/types';
 import { DiagramScene } from './DiagramScene';
 import { FitIcon } from './Icons';
+import { ModelCheck } from './ModelCheck';
+import { MiniMap } from './MiniMap';
 import { RelationPicker } from './RelationPicker';
 import { RelationSelectionMenu } from './RelationSelectionMenu';
 import { SelectionMenu } from './SelectionMenu';
@@ -33,6 +37,12 @@ interface Props {
   onDeleteNodes?: (names: string[]) => void;
   /** Duplique les éléments ; renvoie les noms des copies (qui deviennent la sélection). */
   onDuplicate?: (names: string[]) => string[];
+  /** Copier : script X-UML des éléments (pour le presse-papiers). */
+  onCopy?: (names: string[]) => string;
+  /** Coller un texte X-UML au point donné ; renvoie les éléments collés (null : texte non reconnu). */
+  onPaste?: (text: string, at: Point) => string[] | null;
+  /** Note UML rattachée aux éléments sélectionnés ; renvoie le nom de la note. */
+  onAddNote?: (names: string[], text: string) => string;
   onColor?: (names: string[], color: string | null, label: string) => void;
   onCreatePackage?: (title: string, names: string[]) => void;
   /** Extrémités de flèches placées à la main (clé : relationKey). */
@@ -46,6 +56,8 @@ interface Props {
   /** Titre d'un groupe (paquetage, système, cadre) et dégroupement. */
   onRenameGroup?: (group: Group, title: string) => void;
   onUngroup?: (group: Group) => void;
+  /** Ouvre les informations légales (lien permanent en bas du diagramme). */
+  onShowLegal?: () => void;
   /** Consigne affichée sur un tableau vide (dépend du mode Code / Visuel). */
   emptyHint?: string;
   onTypeSelection?: (type: DiagramType, title: string, names: string[]) => void;
@@ -103,9 +115,13 @@ export function Canvas({
   onDrop,
   onDeleteNodes,
   onDuplicate,
+  onAddNote,
+  onCopy,
+  onPaste,
   onColor,
   onCreatePackage,
   emptyHint,
+  onShowLegal,
   onRenameElement,
   anchors,
   onEndpointDrop,
@@ -236,6 +252,49 @@ export function Canvas({
     setSelection(new Set(copies));
   };
 
+  // --- Copier / couper / coller (événements natifs : aucune autorisation de presse-papiers requise) ---
+  const clipRef = useRef<(kind: 'copy' | 'cut' | 'paste', e: ClipboardEvent) => void>(() => {});
+  clipRef.current = (kind, e) => {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable)) return; // texte : comportement normal
+    if (kind === 'paste') {
+      const text = e.clipboardData?.getData('text/plain') ?? '';
+      if (!text.trim() || !onPaste) return;
+      // Collé au centre de la zone visible, sous forme de nouvelle sélection.
+      const r = svgRef.current?.getBoundingClientRect();
+      const center = r ? toWorld(r.left + r.width / 2 - 120, r.top + r.height / 2 - 80) : { x: 0, y: 0 };
+      const names = onPaste(text, { x: snap(center.x), y: snap(center.y) });
+      if (names) {
+        e.preventDefault();
+        setSelected(null);
+        setSelection(new Set(names));
+      }
+      return;
+    }
+    const names = selected2.size > 0 ? [...selected2] : selected ? [selected] : [];
+    if (!names.length || !onCopy) return;
+    e.preventDefault();
+    e.clipboardData?.setData('text/plain', onCopy(names));
+    if (kind === 'cut') {
+      onDeleteNodes?.(names);
+      setSelection(new Set());
+      setSelected(null);
+    }
+  };
+  useEffect(() => {
+    const copy = (e: ClipboardEvent) => clipRef.current('copy', e);
+    const cut = (e: ClipboardEvent) => clipRef.current('cut', e);
+    const paste = (e: ClipboardEvent) => clipRef.current('paste', e);
+    document.addEventListener('copy', copy);
+    document.addEventListener('cut', cut);
+    document.addEventListener('paste', paste);
+    return () => {
+      document.removeEventListener('copy', copy);
+      document.removeEventListener('cut', cut);
+      document.removeEventListener('paste', paste);
+    };
+  }, []);
+
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   onKeyRef.current = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
@@ -360,8 +419,10 @@ export function Canvas({
     for (const e of edges) {
       const index = diagram.relations.indexOf(e.relation);
       if (index < 0 || e.points.length < 2 || e.relation.from === e.relation.to) continue;
+      // Les liens de note gardent leur extrémité côté note ; seule la cible se déplace (ci-dessous).
+      const noteLink = e.relation.via === 'note';
       const key = relationKey(diagram.relations, index);
-      for (const which of ['start', 'end'] as const) {
+      for (const which of (noteLink ? ['end'] : ['start', 'end']) as ('start' | 'end')[]) {
         const tip = which === 'start' ? e.points[0] : e.points[e.points.length - 1];
         const next = which === 'start' ? e.points[1] : e.points[e.points.length - 2];
         const len = Math.hypot(next.x - tip.x, next.y - tip.y) || 1;
@@ -608,6 +669,20 @@ export function Canvas({
     return members.length === selected2.size && members.every((m) => selected2.has(m)) ? g : null;
   })();
 
+  // --- Vérification du modèle ------------------------------------------------------------------
+  const issues = useMemo(() => validate(diagram), [diagram]);
+  /** Avertissement choisi : ses éléments sont sélectionnés et amenés au centre de la vue (zoom conservé). */
+  const pickIssue = (issue: Issue) => {
+    const rects = issue.elements.map((n) => boxes[n]).filter((r): r is NonNullable<typeof r> => !!r);
+    const b = boundsOf(rects);
+    setSelected(null);
+    setSelectedEdge(null);
+    setSelection(new Set(issue.elements.filter((n) => boxes[n])));
+    const el = svgRef.current;
+    if (!b || !el) return;
+    setView((v) => ({ ...v, x: el.clientWidth / 2 - (b.x + b.w / 2) * v.k, y: el.clientHeight / 2 - (b.y + b.h / 2) * v.k }));
+  };
+
   // --- Rendu ------------------------------------------------------------------------------------
 
   // Trait « élastique » + classe visée mise en évidence.
@@ -651,13 +726,18 @@ export function Canvas({
         onPointerCancel={onPointerCancel}
         onDoubleClick={onDoubleClick}
       >
-        {/* Grille de points : repère visuel de l'aimantation, suit pan et zoom */}
+        {/* Papier millimétré : trame fine (aimantation) et trait plus marqué toutes les 4 cases.
+            Repère de la planche à dessin ; il suit le déplacement et le zoom. */}
         <defs>
           <pattern id="xuml-grid" width={gridSize} height={gridSize} patternUnits="userSpaceOnUse" x={view.x} y={view.y}>
-            <circle cx={1} cy={1} r={1} fill={theme.grid} />
+            <path d={`M ${gridSize} 0 H 0 V ${gridSize}`} fill="none" stroke={theme.grid} strokeOpacity={0.32} strokeWidth={1} />
+          </pattern>
+          <pattern id="xuml-grid-major" width={gridSize * 4} height={gridSize * 4} patternUnits="userSpaceOnUse" x={view.x} y={view.y}>
+            <path d={`M ${gridSize * 4} 0 H 0 V ${gridSize * 4}`} fill="none" stroke={theme.grid} strokeOpacity={0.7} strokeWidth={1} />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#xuml-grid)" />
+        <rect width="100%" height="100%" fill="url(#xuml-grid-major)" />
 
         <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
           <DiagramScene
@@ -795,6 +875,32 @@ export function Canvas({
           const keepsId = node && ((node.kind ?? 'class') === 'class' || node.kind === 'object');
           const value = node ? (keepsId ? node.name : (node.label ?? node.name)) : (group?.title ?? '');
           const close = () => setRenaming(null);
+          if (node?.kind === 'note') {
+            // Note : texte sur plusieurs lignes (Entrée = nouvelle ligne, Ctrl+Entrée ou clic ailleurs = valider).
+            return (
+              <textarea
+                key={`note-${node.name}`}
+                autoFocus
+                defaultValue={value}
+                aria-label="Texte de la note"
+                onFocus={(e) => e.currentTarget.select()}
+                onBlur={(e) => {
+                  const v = e.currentTarget.value.trim();
+                  if (v !== value) onRenameElement?.(node.name, v);
+                  close();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) e.currentTarget.blur();
+                  if (e.key === 'Escape') {
+                    e.currentTarget.value = value;
+                    e.currentTarget.blur();
+                  }
+                }}
+                className="absolute z-30 resize-none rounded-md border-2 border-indigo-500 bg-white p-2 font-mono text-[13px] leading-[17px] text-slate-900 shadow-lg focus:outline-none dark:bg-slate-900 dark:text-white"
+                style={{ left: toScreen({ x: r.x, y: r.y }).x, top: toScreen({ x: r.x, y: r.y }).y, width: Math.max(220, r.w * view.k), height: Math.max(90, r.h * view.k) }}
+              />
+            );
+          }
           return (
             <input
               key={`${renaming.type}-${renaming.name}`}
@@ -892,6 +998,19 @@ export function Canvas({
               setSelection(new Set());
             }}
             onDuplicate={() => duplicate(names)}
+            onAlign={(mode) => {
+              const moves = alignBoxes(Object.fromEntries(names.filter((n) => boxes[n]).map((n) => [n, boxes[n]])), mode);
+              if (Object.keys(moves).length) onMove(moves, true); // une seule étape d'annulation
+            }}
+            onNote={
+              onAddNote
+                ? (text) => {
+                    const n = onAddNote(names, text);
+                    setSelection(new Set());
+                    setSelected(n);
+                  }
+                : undefined
+            }
             groupAction={vocab.group.action}
             groupPlaceholder={vocab.group.placeholder}
             legend={diagram.style?.legend ?? []}
@@ -938,23 +1057,57 @@ export function Canvas({
         </div>
       )}
 
-      {/* Contrôles de vue */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/90 p-0.5 text-sm shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
-        <button type="button" onClick={() => zoomBy(1 / 1.25)} title="Zoom arrière" className="h-7 w-7 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
-          −
-        </button>
-        <span className="w-11 text-center text-xs tabular-nums text-slate-500 dark:text-slate-400">{Math.round(view.k * 100)}%</span>
-        <button type="button" onClick={() => zoomBy(1.25)} title="Zoom avant" className="h-7 w-7 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
-          +
-        </button>
-        <button type="button" onClick={fit} title="Ajuster à la fenêtre" className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
-          <FitIcon />
-        </button>
+      {/* Mini-carte (grands diagrammes), au-dessus des contrôles de vue */}
+      {!isEmpty && (
+        <div className="absolute bottom-14 right-3">
+          <MiniMap
+            boxes={Object.values(boxes)}
+            frames={Object.values(frames)}
+            selection={[...selected2].map((n) => boxes[n])}
+            view={view}
+            width={bounds.w}
+            height={bounds.h}
+            theme={theme}
+            onView={setView}
+          />
+        </div>
+      )}
+
+      {/* Coin bas-droit : mentions légales, vérification du modèle, contrôles de vue */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-2">
+        {onShowLegal && (
+          <button
+            type="button"
+            onClick={onShowLegal}
+            className="hidden rounded px-1 text-[11px] underline decoration-transparent underline-offset-2 hover:decoration-current focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 sm:block"
+            style={{ color: theme.muted }}
+          >
+            Mentions légales
+          </button>
+        )}
+        {!isEmpty && <ModelCheck issues={issues} onPick={pickIssue} />}
+        <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/90 p-0.5 text-sm shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+          <button type="button" onClick={() => zoomBy(1 / 1.25)} title="Zoom arrière" className="h-7 w-7 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
+            −
+          </button>
+          <span className="w-11 text-center text-xs tabular-nums text-slate-500 dark:text-slate-400">{Math.round(view.k * 100)}%</span>
+          <button type="button" onClick={() => zoomBy(1.25)} title="Zoom avant" className="h-7 w-7 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
+            +
+          </button>
+          <button type="button" onClick={fit} title="Ajuster à la fenêtre" className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
+            <FitIcon />
+          </button>
+        </div>
       </div>
 
-      <p className="pointer-events-none absolute bottom-3 left-3 hidden text-[11px] lg:block" style={{ color: theme.muted }}>
-        Glisser : déplacer · Shift+clic ou Shift+glisser : sélection multiple · Poignée ronde : nouvelle relation · Ctrl+Z : annuler
-      </p>
+      {/* Aide discrète : les gestes de base, le reste est dans « Fonctionnalités » (F1) */}
+      {/* Masquée quand la place manque : elle ne doit jamais chevaucher les contrôles de droite */}
+      <ul className={`pointer-events-none absolute bottom-3 left-3 gap-4 text-[11px] ${bounds.w >= 1180 ? 'flex' : 'hidden'}`} style={{ color: theme.muted }}>
+        <li>Glisser : déplacer</li>
+        <li>Shift+clic : sélection multiple</li>
+        <li>Poignée ronde : nouvelle relation</li>
+        <li>F1 : toutes les fonctionnalités</li>
+      </ul>
     </div>
   );
 }

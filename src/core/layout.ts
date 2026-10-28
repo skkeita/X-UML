@@ -7,7 +7,7 @@ import type { ClassNode, Diagram, Group, LegendEntry, Member, Point, Positions, 
 
 export const GRID = 10;
 export const FONT_SIZE = 12;
-export const FONT_FAMILY = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+export const FONT_FAMILY = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 export const ROW_H = 20;
 const CHAR_W = 7.4; // largeur moyenne d'un caractère monospace à 12 px
 const PAD_X = 14;
@@ -33,6 +33,24 @@ export function headerHeight(c: ClassNode): number {
 /** Texte affiché pour un élément (libellé s'il diffère de l'identifiant). */
 export const displayName = (c: ClassNode): string => c.label ?? c.name;
 
+export const NOTE_LINE = 17;
+const NOTE_WRAP = 34;
+/** Lignes affichées d'une note : retours à la ligne voulus, puis coupure aux espaces vers 34 caractères. */
+export function noteLines(text: string): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    let line = '';
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      if (line && (line + ' ' + word).length > NOTE_WRAP) {
+        out.push(line);
+        line = word;
+      } else line = line ? `${line} ${word}` : word;
+    }
+    out.push(line);
+  }
+  return out.length ? out : [''];
+}
+
 /** Taille d'un élément selon sa nature (classe, acteur, cas d'utilisation, objet, système, paquetage). */
 export function measureClass(c: ClassNode): Size {
   const text = displayName(c);
@@ -47,6 +65,11 @@ export function measureClass(c: ClassNode): Size {
       return { w: Math.max(170, Math.ceil(text.length * 8.6 + 48)), h: 76 };
     case 'package':
       return { w: Math.max(140, Math.ceil(text.length * 8.6 + 40)), h: 74 };
+    case 'note': {
+      const lines = noteLines(c.label ?? '');
+      const widest = Math.max(0, ...lines.map((l) => l.length));
+      return { w: Math.max(120, Math.ceil(widest * 7 + 34)), h: Math.max(44, lines.length * NOTE_LINE + 22) };
+    }
     default:
       return measureClassBox(c);
   }

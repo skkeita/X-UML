@@ -24,6 +24,8 @@ export interface InspectorActions {
   onMembers: (name: string, members: MemberDraft[]) => void;
   onObjectType: (name: string, type: string) => void;
   onGroup: (name: string, group: string | null) => void;
+  onNoteText: (name: string, text: string) => void;
+  onNoteTargets: (name: string, targets: string[]) => void;
   onRenameGroup: (group: Group, title: string) => void;
   onUngroup: (group: Group) => void;
   onColor: (names: string[], color: string | null, label: string) => void;
@@ -45,7 +47,7 @@ interface Props extends InspectorActions {
 
 const FIELD =
   'h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
-const LABEL = 'mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
+const LABEL = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300';
 const VISIBILITY: { v: Visibility; label: string }[] = [
   { v: '+', label: '+ public' },
   { v: '-', label: '- privé' },
@@ -83,6 +85,13 @@ function KindIcon({ kind }: { kind: ElementKind }) {
       return (
         <svg {...common}>
           <path d="M3 8V5h7l1 3h10v11H3z" />
+        </svg>
+      );
+    case 'note':
+      return (
+        <svg {...common}>
+          <path d="M4 3h11l5 5v13H4z" />
+          <path d="M15 3v5h5" />
         </svg>
       );
     case 'object':
@@ -149,7 +158,7 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
   return (
     <section className="border-b border-slate-100 px-3 py-3 dark:border-slate-800/80">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h3>
+        <h3 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
         {aside}
       </div>
       {children}
@@ -274,7 +283,7 @@ export function Inspector(p: Props) {
         </Section>
 
         {node ? (
-          <ElementSheet {...p} node={node} elements={elements} />
+          node.kind === 'note' ? <NoteSheet {...p} node={node} /> : <ElementSheet {...p} node={node} elements={elements} />
         ) : (
           <>
             <Section title="Ajouter">
@@ -406,6 +415,75 @@ export function Inspector(p: Props) {
 }
 
 /** Fiche de l'élément sélectionné : nom, nature, héritage, membres, appartenance, couleur, relations. */
+/** Fiche d'une note : texte (plusieurs lignes) et éléments auxquels elle est rattachée. */
+function NoteSheet(p: Props & { node: ClassNode }) {
+  const { node, diagram } = p;
+  const name = node.name;
+  const [draft, setDraft] = useState(node.label ?? '');
+  useEffect(() => setDraft(node.label ?? ''), [node.label]);
+  const targets = diagram.relations.filter((r) => r.from === name && r.via === 'note').map((r) => r.to);
+  const candidates = diagram.classes.filter((c) => c.name !== name && c.kind !== 'note');
+  return (
+    <div data-element-sheet={name}>
+      <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800/80">
+        <button
+          type="button"
+          onClick={() => p.onSelect(null)}
+          className="rounded px-1.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+        >
+          ← Retour à la liste
+        </button>
+        <span className="ml-auto flex items-center gap-1 text-xs text-slate-500">
+          <KindIcon kind="note" />
+          Note
+        </span>
+      </div>
+      <Section title="Texte">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => draft.trim() !== (node.label ?? '') && p.onNoteText(name, draft.trim())}
+          rows={5}
+          aria-label="Texte de la note"
+          className={`${FIELD} h-auto resize-y py-1.5 leading-relaxed`}
+        />
+        <p className="mt-1 text-[11px] text-slate-400">Entrée pour aller à la ligne ; enregistré quand vous quittez le champ.</p>
+      </Section>
+      <Section title="Rattachée à">
+        {candidates.length === 0 ? (
+          <p className="text-xs text-slate-400">Aucun élément sur le tableau.</p>
+        ) : (
+          <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
+            {candidates.map((c) => (
+              <label key={c.name} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={targets.includes(c.name)}
+                  onChange={(e) => p.onNoteTargets(name, e.target.checked ? [...targets, c.name] : targets.filter((t) => t !== c.name))}
+                  className="h-3.5 w-3.5 accent-indigo-600"
+                />
+                {displayName(c)}
+              </label>
+            ))}
+          </div>
+        )}
+      </Section>
+      <div className="flex gap-2 px-3 py-3">
+        <button
+          type="button"
+          onClick={() => {
+            p.onDelete([name]);
+            p.onSelect(null);
+          }}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-500/10"
+        >
+          <TrashIcon /> Supprimer la note
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ElementSheet(p: Props & { node: ClassNode; elements: { name: string; label: string }[] }) {
   const { node, diagram, vocab } = p;
   const kind = elementKindOf(node);
@@ -431,7 +509,7 @@ function ElementSheet(p: Props & { node: ClassNode; elements: { name: string; la
 
   // Natures proposées : celles du diagramme, dans la même famille (on ne perd jamais de membres).
   const kindChoices = [...new Set<ElementKind>([kind, ...vocab.create.map((c) => c.kind), ...(classLike ? (['class', 'abstract', 'interface', 'enum'] as ElementKind[]) : [])])].filter(
-    (k) => isClassFamily(k) === classLike || node.members.length === 0,
+    (k) => k !== 'note' && (isClassFamily(k) === classLike || node.members.length === 0),
   );
 
   const { attrs, methods } = { attrs: node.members.filter((m) => m.kind === 'attribute'), methods: node.members.filter((m) => m.kind === 'method') };

@@ -49,6 +49,7 @@ export const KEYWORDS = [
   'style rounded',
   'legend',
   'legend off',
+  'note',
 ];
 
 const MAX = 10;

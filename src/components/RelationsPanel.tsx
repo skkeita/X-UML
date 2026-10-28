@@ -132,7 +132,9 @@ const SELECT =
  */
 export function RelationsPanel({ relations, elements, filter, vocab, onChange, onDelete, onAdd, embedded }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const list = filter ? relations.filter((r) => r.from === filter || r.to === filter) : relations;
+  // Les liens de note se règlent depuis la note elle-même : ils ne sont pas des relations UML.
+  const umlRelations = relations.filter((r) => r.via !== 'note');
+  const list = filter ? umlRelations.filter((r) => r.from === filter || r.to === filter) : umlRelations;
   const names = elements.map((e) => e.name);
   const labelOf = (n: string) => elements.find((e) => e.name === n)?.label ?? n;
   // Un élément cité dans une relation doit rester sélectionnable même s'il n'est pas déclaré.
@@ -159,7 +161,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
     >
       <header className={`flex shrink-0 items-center gap-2 ${embedded ? 'h-8' : 'h-9 px-2'}`}>
         {embedded ? (
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <h3 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">
             {vocab.relationsLabel} <span className="font-normal normal-case text-slate-400">({list.length})</span>
           </h3>
         ) : (
@@ -167,7 +169,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             aria-expanded={!collapsed}
-            className="flex items-center gap-1.5 rounded px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+            className="flex items-center gap-1.5 rounded px-1 text-[13px] font-semibold text-slate-800 hover:text-slate-950 dark:text-slate-200 dark:hover:text-white"
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true" className={collapsed ? '-rotate-90' : ''}>
               <path d="M6 9l6 6 6-6" />

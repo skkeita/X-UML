@@ -54,7 +54,7 @@ function FeatureCard({ f }: { f: Feature }) {
  * Toutes les fonctionnalités de l'application, classées et cherchables.
  * UX : recherche immédiate (insensible aux accents), sommaire cliquable, raccourcis en touches de clavier.
  */
-export function FeaturesDialog({ onClose }: { onClose: () => void }) {
+export function FeaturesDialog({ onClose, onShowLegal }: { onClose: () => void; onShowLegal?: () => void }) {
   const [query, setQuery] = useState('');
   const sections = useMemo(() => searchFeatures(query), [query]);
   const showShortcuts = !query.trim() || /racc|touche|clavier|ctrl/i.test(query);
@@ -92,7 +92,17 @@ export function FeaturesDialog({ onClose }: { onClose: () => void }) {
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-slate-900 dark:text-white">Fonctionnalités</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Tout ce que permet X-UML, et comment y accéder.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Tout ce que permet X-UML, et comment y accéder.
+              {onShowLegal && (
+                <>
+                  {' '}
+                  <button type="button" onClick={onShowLegal} className="underline underline-offset-2 hover:text-slate-800 dark:hover:text-slate-200">
+                    Mentions légales et confidentialité
+                  </button>
+                </>
+              )}
+            </p>
           </div>
           <input
             autoFocus
@@ -149,7 +159,7 @@ export function FeaturesDialog({ onClose }: { onClose: () => void }) {
             )}
             {sections.map((s) => (
               <section key={s.id} id={`feat-${s.id}`} className="mb-6 scroll-mt-2">
-                <h3 className="mb-1 text-[13px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">{s.title}</h3>
+                <h3 className="mb-1 text-[15px] font-semibold text-slate-900 dark:text-white">{s.title}</h3>
                 {s.intro && !query.trim() && <p className="mb-2 text-[13px] text-slate-500 dark:text-slate-400">{s.intro}</p>}
                 <ul className="grid gap-2 lg:grid-cols-2">
                   {s.items.map((f) => (
@@ -160,7 +170,7 @@ export function FeaturesDialog({ onClose }: { onClose: () => void }) {
             ))}
             {showShortcuts && (
               <section id="feat-raccourcis" className="mb-4 scroll-mt-2">
-                <h3 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Raccourcis clavier</h3>
+                <h3 className="mb-2 text-[15px] font-semibold text-slate-900 dark:text-white">Raccourcis clavier</h3>
                 <table className="w-full text-sm">
                   <tbody>
                     {SHORTCUTS.map((sc) => (

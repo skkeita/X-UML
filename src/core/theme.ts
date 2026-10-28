@@ -16,30 +16,34 @@ export interface SceneTheme {
   accent: string;
   /** 1 = coins arrondis (par défaut), 0 = coins carrés. */
   corner?: number;
+  /** Fond des notes UML (papier légèrement jaune, comme un post-it de relecture). */
+  noteFill?: string;
 }
 
 export const LIGHT: SceneTheme = {
-  bg: '#f8fafc',
-  grid: '#cbd5e1',
-  boxFill: '#ffffff',
-  boxStroke: '#64748b',
-  headerFill: '#e0e7ff',
-  text: '#0f172a',
-  muted: '#64748b',
-  edge: '#475569',
-  accent: '#4f46e5',
+  bg: '#F3F5F8', // calque
+  grid: '#C5D0DB',
+  boxFill: '#FFFFFF',
+  boxStroke: '#3B4859', // trait d'encre net, comme sur un plan
+  headerFill: '#E2EBF6', // en-tête bleu cobalt très clair
+  text: '#17212D',
+  muted: '#5E6C7E',
+  edge: '#2F3B4A',
+  accent: '#1F5FAD', // cobalt : sélection, poignées
+  noteFill: '#FBF5DD',
 };
 
 export const DARK: SceneTheme = {
-  bg: '#0b1020',
-  grid: '#1e293b',
-  boxFill: '#111827',
-  boxStroke: '#475569',
-  headerFill: '#1e1b4b',
-  text: '#e2e8f0',
-  muted: '#94a3b8',
-  edge: '#94a3b8',
-  accent: '#818cf8',
+  bg: '#0E1620',
+  grid: '#223142',
+  boxFill: '#142030',
+  boxStroke: '#5D7189',
+  headerFill: '#1A3250',
+  text: '#E5EBF1',
+  muted: '#98A7B8',
+  edge: '#A2B2C4',
+  accent: '#6FA3E3',
+  noteFill: '#2A2719',
 };
 
 export const sceneTheme = (name: ThemeName): SceneTheme => (name === 'dark' ? DARK : LIGHT);
@@ -82,6 +86,8 @@ export function tinted(theme: SceneTheme, color: string): SceneTheme {
     ...theme,
     headerFill: color,
     boxFill: light ? mix(color, '#ffffff', 0.55) : mix(color, '#000000', 0.25),
+    // Une note colorée prend la teinte choisie (au lieu du papier jaune par défaut).
+    noteFill: light ? mix(color, '#ffffff', 0.4) : mix(color, '#000000', 0.25),
     text,
     muted: light ? '#475569' : '#e2e8f0',
     boxStroke: light ? mix(color, '#000000', 0.55) : mix(color, '#ffffff', 0.35),

@@ -11,6 +11,8 @@ import {
   type EdgeGeometry,
   headerHeight,
   legendBox,
+  NOTE_LINE,
+  noteLines,
   memberLabel,
   splitMembers,
 } from '../core/layout';
@@ -183,6 +185,28 @@ function ClassBox({
             <text x={w / 2} y={16 + (h - 16) / 2 + 5} textAnchor="middle" {...text} fontSize={13} fontWeight={700}>
               {name}
             </text>
+          </>
+        );
+      }
+      case 'note': {
+        // Rectangle au coin supérieur droit plié : la notation UML d'un commentaire.
+        const f = 12;
+        const lines = noteLines(node.label ?? '');
+        return (
+          <>
+            <path
+              d={`M 0 0 H ${w - f} L ${w} ${f} V ${h} H 0 Z`}
+              fill={theme.noteFill ?? theme.boxFill}
+              stroke={stroke}
+              strokeWidth={sw}
+              data-shape="note"
+            />
+            <path d={`M ${w - f} 0 V ${f} H ${w}`} fill="none" stroke={stroke} strokeWidth={sw} />
+            {lines.map((l, i) => (
+              <text key={i} x={12} y={20 + i * NOTE_LINE} {...text} fontSize={12} fontWeight={400}>
+                {l}
+              </text>
+            ))}
           </>
         );
       }
@@ -396,24 +420,28 @@ export function DiagramScene({
       {/* Liens sous les boîtes : une boîte déplacée masque proprement les traits qui passent derrière */}
       <g fill="none" stroke={theme.edge} strokeWidth={1.4}>
         {edges.map(({ relation, d, label, points, inset }, i) => {
-          const m = markerFor(relation.kind);
+          // Lien d'une note : simple pointillé discret, sans flèche, non cliquable (il se règle depuis la note).
+          const noteLink = relation.via === 'note';
+          const m = noteLink ? {} : markerFor(relation.kind);
           const isSelected = selectedEdge === relation.line || !!selectedEdges?.has(relation.line);
           return (
             <g
               key={i}
-              onPointerDown={onEdgePointerDown ? (e) => onEdgePointerDown(relation, e) : undefined}
-              style={{ cursor: onEdgePointerDown ? 'pointer' : undefined }}
+              onPointerDown={onEdgePointerDown && !noteLink ? (e) => onEdgePointerDown(relation, e) : undefined}
+              style={{ cursor: onEdgePointerDown && !noteLink ? 'pointer' : undefined }}
+              data-note-link={noteLink ? '' : undefined}
               data-relation={relation.line}
               opacity={focusOn && relation.from !== focusOn && relation.to !== focusOn ? DIM : undefined}
             >
               {/* Zone de clic invisible de 14 px : un trait de 1,4 px est presque impossible à viser */}
-              {onEdgePointerDown && <path d={d} stroke="transparent" strokeWidth={14} pointerEvents="stroke" />}
+              {onEdgePointerDown && !noteLink && <path d={d} stroke="transparent" strokeWidth={14} pointerEvents="stroke" />}
               {isSelected && <path d={d} stroke={theme.accent} strokeOpacity={0.25} strokeWidth={8} strokeLinecap="round" />}
               <path
                 d={d}
                 stroke={isSelected ? theme.accent : undefined}
                 strokeWidth={isSelected ? 2 : undefined}
-                strokeDasharray={DASHED.includes(relation.kind) ? '6 4' : undefined}
+                strokeDasharray={noteLink ? '3 3' : DASHED.includes(relation.kind) ? '6 4' : undefined}
+                strokeOpacity={noteLink && !isSelected ? 0.7 : undefined}
                 markerStart={m.start}
                 markerEnd={m.end}
               />

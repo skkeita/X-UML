@@ -6,16 +6,19 @@ import { SplitPane } from './components/SplitPane';
 import { Tabs } from './components/Tabs';
 import { Toast, type ToastData } from './components/Toast';
 import { Toolbar } from './components/Toolbar';
-import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, setColor, setCorners, setLegendVisible, toIdent, ungroup, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
+import { addDiagramFrame, addPackage, addRelation, deleteNodes, duplicateNodes, addNote, setNoteTargets, setNoteText, setColor, setCorners, setLegendVisible, toIdent, ungroup, deleteRelation, updateRelation, type RelationChange, type RelationRef } from './core/edit';
 import { applyFocusEdit, codeLines, focusLines, focusText } from './core/focus';
 import { boundsOf, computeBoxes, computeFrames, layoutNewClasses, measureClass, resolveOverlap } from './core/layout';
 import { parse } from './core/parser';
+import { copySnippet, isPasteable, pasteSnippet } from './core/clipboard';
+import { javaToScript } from './core/javaImport';
 import { relationKey, type Anchor, type EdgeAnchors } from './core/routing';
 import { VOCABULARIES, inferDiagramType, summarize, type ElementKind } from './core/vocabulary';
 import { addElement, renameElement, setElementKind, setGroupTitle, setElementLabel, setGroupOf, setMembers, setObjectType, setParents, type MemberDraft } from './core/modelEdit';
 import { Inspector } from './components/Inspector';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FeaturesDialog } from './components/FeaturesDialog';
+import { LEGAL_TABS, LegalDialog, type LegalTab } from './components/LegalDialog';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
 import { PRINT, sceneTheme } from './core/theme';
@@ -29,6 +32,10 @@ import { buildSvg, buildSvgString, downloadText } from './lib/exportSvg';
 import { exportFileName, parseProjectFile, serializeProject } from './lib/projectFile';
 import { newBoard, type Board } from './lib/project';
 import { loadProject, type StoredProject } from './lib/storage';
+import { decodeBoard, LONG_LINK, SHARE_PREFIX, shareUrl } from './lib/share';
+import { addVersion, deleteVersion, loadVersions, SNAPSHOT_EVERY, type Version, type VersionReason } from './lib/versions';
+import { CodeGenDialog } from './components/CodeGenDialog';
+import { VersionsDialog } from './components/VersionsDialog';
 
 export type RelationMode = 'simple' | 'custom';
 const RELATION_MODE_KEY = 'x-uml:relation-mode';
@@ -257,7 +264,7 @@ export default function App() {
         const p = positions[from];
         if (p) moved[to] = { x: p.x + 40, y: p.y + 40 };
       }
-      history.push(onActive((b) => ({ ...b, source: next, positions: { ...b.positions, ...moved } })));
+      history.push(onActive((b) => ({ ...b, source: next, positions: { ...positions, ...b.positions, ...moved } })));
       return Object.values(renames);
     },
     [active.source, positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
@@ -339,11 +346,12 @@ export default function App() {
   );
   const handleAddElement = useCallback(
     (kind: ElementKind, label: string): string => {
-      const { source: next, name } = addElement(active.source, kind, label);
-      history.push(onActive((b) => ({ ...b, source: next })));
+      const { source: next, name } = kind === 'note' ? addNote(active.source, label, []) : addElement(active.source, kind, label);
+      // Les éléments existants restent où ils sont : seul le nouveau est placé automatiquement.
+      history.push(onActive((b) => ({ ...b, source: next, positions: { ...positions, ...b.positions } })));
       return name;
     },
-    [active.source, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+    [active.source, positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const handleRename = useCallback(
     (name: string, next: string) => {
@@ -379,11 +387,64 @@ export default function App() {
   const handleRenameAny = useCallback(
     (name: string, text: string) => {
       const node = diagram.classes.find((c) => c.name === name);
+      if (node?.kind === 'note') return editSource((src) => setNoteText(src, name, text));
       const keepsId = !node || (node.kind ?? 'class') === 'class' || node.kind === 'object';
       if (keepsId) handleRename(name, text);
       else editSource((src) => setElementLabel(src, name, text));
     },
     [diagram, handleRename, editSource],
+  );
+  /**
+   * Note rattachée à une sélection : placée juste à droite des éléments annotés (on voit tout de suite
+   * à quoi elle se rapporte), puis le texte est saisi.
+   */
+  const handleAddNote = useCallback(
+    (names: string[], text: string) => {
+      const { source: next, name } = addNote(active.source, text, names);
+      const all = computeBoxes(diagram, positions);
+      const b = boundsOf(names.map((n) => all[n]).filter((r) => !!r));
+      const frozen = { ...positions, ...active.positions };
+      history.push(
+        onActive((bd) => ({
+          ...bd,
+          source: next,
+          positions: b ? { ...frozen, [name]: { x: Math.round((b.x + b.w + 60) / 10) * 10, y: Math.round(b.y / 10) * 10 } } : frozen,
+        })),
+      );
+      return name;
+    },
+    [active.source, positions, diagram, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // --- Copier / coller ------------------------------------------------------------------------------
+  const handleCopy = useCallback(
+    (names: string[]) => {
+      setToast({ id: Date.now(), message: `${names.length} élément${names.length > 1 ? 's' : ''} copié${names.length > 1 ? 's' : ''} : Ctrl+V pour coller, ici ou dans un autre onglet.`, tone: 'success' });
+      return copySnippet(active.source, names, positions);
+    },
+    [active.source, positions],
+  );
+  /**
+   * Colle un texte X-UML (copié dans l'application, ou écrit ailleurs) au point donné.
+   * Le bloc garde sa disposition, ne recouvre aucun élément, et les noms déjà pris sont renommés.
+   */
+  const handlePaste = useCallback(
+    (text: string, at: Point): string[] | null => {
+      if (!isPasteable(text)) return null;
+      const r = pasteSnippet(active.source, text, at);
+      const after = parse(r.source).diagram;
+      const sizes = Object.fromEntries(after.classes.map((c) => [c.name, measureClass(c)]));
+      const placed = r.positions;
+      const rects = r.names.filter((n) => placed[n]).map((n) => ({ ...placed[n], ...sizes[n] }));
+      const union = boundsOf(rects);
+      if (union) {
+        const others = Object.values(computeBoxes(diagram, positions));
+        const free = resolveOverlap({ x: union.x, y: union.y }, { w: union.w, h: union.h }, others);
+        for (const n of Object.keys(placed)) placed[n] = { x: placed[n].x + free.x - union.x, y: placed[n].y + free.y - union.y };
+      }
+      history.push(onActive((b) => ({ ...b, source: r.source, positions: { ...positions, ...b.positions, ...placed } })));
+      return r.names;
+    },
+    [active.source, diagram, positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const handleRenameGroup = useCallback((group: Group, title: string) => editSource((src) => setGroupTitle(src, group, title)), [editSource]);
   /** Dégrouper : le cadre disparaît, les éléments restent exactement à leur place. */
@@ -395,6 +456,8 @@ export default function App() {
     [positions, onActive, history.push], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const inspectorActions = {
+    onNoteText: (name: string, text: string) => editSource((src) => setNoteText(src, name, text)),
+    onNoteTargets: (name: string, targets: string[]) => editSource((src) => setNoteTargets(src, name, () => targets)),
     onRenameGroup: handleRenameGroup,
     onUngroup: handleUngroup,
     onTypeChange: setBoardType,
@@ -568,6 +631,7 @@ export default function App() {
       if (list.length <= 1) return;
       const i = list.findIndex((b) => b.id === id);
       const name = list[i]?.name;
+      snapshot('close');
       history.push((p) => ({ boards: p.boards.filter((b) => b.id !== id) }));
       if (id === activeIdRef.current) setActiveId(list[i + 1]?.id ?? list[i - 1].id);
       setToast({ id: Date.now(), message: `Tableau « ${name} » fermé.`, tone: 'success', action: { label: 'Annuler', onClick: undo } });
@@ -590,6 +654,7 @@ export default function App() {
         setToast({ id: Date.now(), message: `Import impossible : ${r.error}`, tone: 'error' });
         return;
       }
+      snapshot('import');
       history.push(() => ({ boards: r.boards }));
       setActiveId(r.boards[0].id);
       setViewMemo(null);
@@ -601,6 +666,34 @@ export default function App() {
     [history.push, undo], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  /**
+   * Fichiers Java : ajoutés comme un nouvel onglet « diagramme de classes » (le projet en cours est conservé).
+   * Plusieurs fichiers d'un coup : un seul diagramme, avec les relations entre leurs classes.
+   */
+  const importJava = useCallback(
+    async (files: File[]) => {
+      const texts = await Promise.all(files.map((f) => f.text().catch(() => '')));
+      const script = javaToScript(texts.join('\n'));
+      if (!script) {
+        setToast({ id: Date.now(), message: 'Aucune classe, interface ou énumération trouvée dans ce code Java.', tone: 'error' });
+        return;
+      }
+      const name = files.length === 1 ? files[0].name.replace(/\.java$/i, '') : 'Import Java';
+      const b = newBoard(uniqueName(history.present.boards, name), script, {}, 'class');
+      history.push((p) => ({ boards: [...p.boards, b] }));
+      setActiveId(b.id);
+      setFitKey((k) => k + 1);
+      const n = parse(script).diagram.classes.length;
+      setToast({ id: Date.now(), message: `${n} type${n > 1 ? 's' : ''} Java importé${n > 1 ? 's' : ''} dans un nouvel onglet.`, tone: 'success', action: { label: 'Annuler', onClick: undo } });
+    },
+    [history, undo], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const importFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    if (files.every((f) => /\.java$/i.test(f.name))) void importJava(files);
+    else void importFile(files[0]);
+  };
+
   const onDragOver = (e: DragEvent) => {
     if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
@@ -610,9 +703,102 @@ export default function App() {
     if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     setDragOver(false);
-    const f = e.dataTransfer.files[0];
-    if (f) void importFile(f);
+    importFiles([...e.dataTransfer.files]);
   };
+
+  // --- Historique des versions locales -----------------------------------------------------
+  const boardsRef = useRef(projectBoards);
+  boardsRef.current = projectBoards;
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  /** Instantané du projet tel qu'il est maintenant (ignoré s'il n'a pas changé depuis le dernier). */
+  const snapshot = useCallback((reason: VersionReason) => setVersions(addVersion(boardsRef.current, reason)), []);
+  useEffect(() => {
+    snapshot('open');
+    const t = window.setInterval(() => snapshot('auto'), SNAPSHOT_EVERY);
+    return () => window.clearInterval(t);
+  }, [snapshot]);
+  const openVersions = () => {
+    setVersions(loadVersions());
+    setVersionsOpen(true);
+  };
+  const closeVersions = useCallback(() => setVersionsOpen(false), []);
+  const restoreVersion = (v: Version) => {
+    snapshot('restore');
+    history.push(() => ({ boards: v.boards.map((b) => ({ ...b })) }));
+    // On reste sur le tableau affiché s'il existait dans cette version.
+    if (!v.boards.some((b) => b.id === activeIdRef.current)) setActiveId(v.boards[0].id);
+    setViewMemo(null);
+    setFocusName(null);
+    setSelectedClass(null);
+    setFitKey((k) => k + 1);
+    setVersionsOpen(false);
+    const at = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', hour: '2-digit', minute: '2-digit' }).format(v.at);
+    setToast({ id: Date.now(), message: `Version de ${at} restaurée.`, tone: 'success', action: { label: 'Annuler', onClick: undo } });
+  };
+
+  // --- Partage par lien (#d=…) -----------------------------------------------------------------
+  const shareLink = async () => {
+    const board = projectBoards.find((b) => b.id === active.id);
+    if (!board) return;
+    const url = shareUrl(board);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    } catch {
+      /* presse-papiers refusé : on montre le lien dans l'adresse */
+    }
+    if (!copied) window.history.replaceState(null, '', url);
+    const long = url.length > LONG_LINK;
+    setToast({
+      id: Date.now(),
+      message: copied
+        ? `Lien de partage copié${long ? ` (${Math.round(url.length / 1000)} k caractères : certaines messageries le couperont, préférez l’export .json)` : ' : quiconque l’ouvre voit une copie de ce tableau.'}`
+        : 'Lien de partage placé dans la barre d’adresse : copiez-le depuis là.',
+      tone: long ? 'error' : 'success',
+    });
+  };
+  const openShared = useCallback(() => {
+    if (!window.location.hash.startsWith(SHARE_PREFIX)) return;
+    const b = decodeBoard(window.location.hash);
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    if (!b) {
+      setToast({ id: Date.now(), message: 'Ce lien de partage est incomplet ou abîmé.', tone: 'error' });
+      return;
+    }
+    const board = { ...b, name: uniqueName(history.present.boards, b.name) };
+    history.push((p) => ({ boards: [...p.boards, board] }));
+    setActiveId(board.id);
+    setFitKey((k) => k + 1);
+    setToast({ id: Date.now(), message: `Diagramme partagé « ${board.name} » ouvert dans un nouvel onglet. Il est enregistré dans ce navigateur.`, tone: 'success', action: { label: 'Annuler', onClick: undo } });
+  }, [history, undo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    openShared();
+    window.addEventListener('hashchange', openShared);
+    return () => window.removeEventListener('hashchange', openShared);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Génération de code ----------------------------------------------------------------------
+  const [codegenOpen, setCodegenOpen] = useState(false);
+  const closeCodegen = useCallback(() => setCodegenOpen(false), []);
+
+  // Informations légales : lien en bas du diagramme, et adresses directes (…/#mentions-legales, #confidentialite, #licences).
+  const tabFromHash = (): LegalTab | null => LEGAL_TABS.find((t) => t.hash === window.location.hash)?.id ?? null;
+  const [legal, setLegal] = useState<LegalTab | null>(tabFromHash);
+  useEffect(() => {
+    const onHash = () => setLegal(tabFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  const openLegal = useCallback((tab: LegalTab | null) => {
+    setLegal(tab);
+    // L'adresse suit l'onglet : on peut partager un lien direct vers la politique de confidentialité.
+    const hash = tab ? (LEGAL_TABS.find((t) => t.id === tab)?.hash ?? '') : '';
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`);
+  }, []);
+  const legalOpenRef = useRef(false);
+  legalOpenRef.current = legal !== null;
 
   // Catalogue des fonctionnalités : bouton de la barre du haut ou F1 (au lieu de l'aide du navigateur).
   const [featuresOpen, setFeaturesOpen] = useState(false);
@@ -629,10 +815,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onF1);
   }, []);
 
+  const dialogOpenRef = useRef(false);
+  dialogOpenRef.current = codegenOpen || versionsOpen;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      if (featuresOpenRef.current) return; // le catalogue est ouvert : Ctrl+Z… agissent sur sa recherche
+      if (featuresOpenRef.current || legalOpenRef.current || dialogOpenRef.current) return; // une fenêtre est ouverte : pas d'action sur le diagramme
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) undo();
       else if ((k === 'z' && e.shiftKey) || k === 'y') redo();
@@ -673,7 +861,7 @@ export default function App() {
       ) : (
         <p>
           {summarize(vocab, diagram)}
-          {diagram.groups?.length ? ` · ${diagram.groups.length} cadre${diagram.groups.length > 1 ? 's' : ''}` : ''}
+          {diagram.groups?.length ? `, ${diagram.groups.length} cadre${diagram.groups.length > 1 ? 's' : ''}` : ''}
         </p>
       )}
     </footer>
@@ -750,11 +938,11 @@ export default function App() {
       <input
         ref={fileInput}
         type="file"
-        accept=".json,.xuml,.txt,.puml,.uml,application/json,text/plain"
+        accept=".json,.xuml,.txt,.puml,.uml,.java,application/json,text/plain"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void importFile(f);
+          importFiles([...(e.target.files ?? [])]);
           e.target.value = ''; // permet de réimporter le même fichier
         }}
       />
@@ -767,6 +955,9 @@ export default function App() {
         activeId={active.id}
         onExportSvg={exportSvg}
         onExportCode={exportCode}
+        onShowCodegen={() => setCodegenOpen(true)}
+        onShareLink={() => void shareLink()}
+        onShowVersions={openVersions}
         onDownloadProject={downloadProject}
         onImport={() => fileInput.current?.click()}
         onExportPdf={(ids) => void downloadPdf(ids)}
@@ -811,11 +1002,15 @@ export default function App() {
             onDrop={handleDrop}
             onDeleteNodes={handleDeleteNodes}
             onDuplicate={handleDuplicate}
+            onAddNote={handleAddNote}
+            onCopy={handleCopy}
+            onPaste={handlePaste}
             onColor={handleColor}
             onCreatePackage={handleCreatePackage}
             onTypeSelection={handleTypeSelection}
             fitKey={fitKey}
             vocab={vocab}
+            onShowLegal={() => openLegal('mentions')}
             emptyHint={
               relationMode === 'custom'
                 ? `Ajoutez ${vocab.create[0]?.withArticle ?? 'un élément'} depuis le panneau de gauche pour commencer`
@@ -832,7 +1027,19 @@ export default function App() {
         </div>
       )}
       <Toast toast={toast} onClose={closeToast} />
-      {featuresOpen && <FeaturesDialog onClose={closeFeatures} />}
+      {featuresOpen && <FeaturesDialog onClose={closeFeatures} onShowLegal={() => { setFeaturesOpen(false); openLegal('mentions'); }} />}
+      {codegenOpen && <CodeGenDialog diagram={diagram} boardName={active.name} onClose={closeCodegen} />}
+      {versionsOpen && (
+        <VersionsDialog
+          versions={versions}
+          theme={sceneTheme(theme)}
+          onRestore={restoreVersion}
+          onDelete={(id) => setVersions(deleteVersion(id))}
+          onSaveNow={() => setVersions(addVersion(boardsRef.current, 'manual'))}
+          onClose={closeVersions}
+        />
+      )}
+      {legal && <LegalDialog tab={legal} onTab={openLegal} onClose={() => openLegal(null)} onExport={() => downloadProject()} />}
     </div>
   );
 }
