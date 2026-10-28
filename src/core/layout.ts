@@ -1,4 +1,4 @@
-import { computeEdges, type EdgeGeometry } from './routing';
+import { computeEdges, type EdgeAnchors, type EdgeGeometry } from './routing';
 import type { ClassNode, Diagram, Group, LegendEntry, Member, Point, Positions, Rect, Size } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -388,19 +388,19 @@ export interface Scene {
 }
 
 /** Tout ce qu'il faut pour dessiner : boîtes, cadres de groupes et tracés des liens. */
-export function computeScene(diagram: Diagram, positions: Positions): Scene {
-  return sceneFromBoxes(diagram, computeBoxes(diagram, positions));
+export function computeScene(diagram: Diagram, positions: Positions, anchors?: Record<string, EdgeAnchors>): Scene {
+  return sceneFromBoxes(diagram, computeBoxes(diagram, positions), anchors);
 }
 
 /** Variante à partir des boîtes déjà calculées (export). */
-export function sceneFromBoxes(diagram: Diagram, boxes: Record<string, Rect>): Scene {
+export function sceneFromBoxes(diagram: Diagram, boxes: Record<string, Rect>, anchors?: Record<string, EdgeAnchors>): Scene {
   const frames = computeFrames(diagram.groups ?? [], boxes);
   const shapes: Record<string, 'ellipse' | 'actor'> = {};
   for (const c of diagram.classes) {
     if (c.kind === 'usecase') shapes[c.name] = 'ellipse';
     else if (c.kind === 'actor') shapes[c.name] = 'actor';
   }
-  const edges = computeEdges(diagram.relations, { ...boxes, ...frames }, { frames: new Set(Object.keys(frames)), shapes });
+  const edges = computeEdges(diagram.relations, { ...boxes, ...frames }, { frames: new Set(Object.keys(frames)), shapes, anchors });
   return { boxes, frames, edges };
 }
 

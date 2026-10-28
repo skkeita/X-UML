@@ -1,6 +1,6 @@
 import { it } from 'vitest';
 import { computeBoxes, computeFrames, computeScene, layoutNewClasses } from './layout';
-import { routeEdges } from './routing';
+import { relationKey, routeEdges } from './routing';
 import { parse } from './parser';
 import { TEMPLATES } from './templates';
 
@@ -31,7 +31,14 @@ it('aucune disposition (boîtes superposées, même au pixel près) ne fait éch
         const frames = computeFrames(d.groups ?? [], boxes);
         const shapes: Record<string, 'ellipse' | 'actor'> = {};
         for (const c of d.classes) if (c.kind === 'usecase') shapes[c.name] = 'ellipse'; else if (c.kind === 'actor') shapes[c.name] = 'actor';
-        const edges = routeEdges(d.relations, { ...boxes, ...frames }, { frames: new Set(Object.keys(frames)), shapes });
+        // Une fois sur deux, des extrémités placées à la main, sur des côtés quelconques.
+        const sides = ['top', 'right', 'bottom', 'left'] as const;
+        const anchors: Record<string, { start?: { side: (typeof sides)[number]; t: number }; end?: { side: (typeof sides)[number]; t: number } }> = {};
+        if (rnd() < 0.5)
+          d.relations.forEach((_, i) => {
+            if (rnd() < 0.4) anchors[relationKey(d.relations, i)] = { ...(rnd() < 0.5 ? { start: { side: sides[Math.floor(rnd() * 4)], t: rnd() } } : {}), end: { side: sides[Math.floor(rnd() * 4)], t: rnd() } };
+          });
+        const edges = routeEdges(d.relations, { ...boxes, ...frames }, { frames: new Set(Object.keys(frames)), shapes, anchors });
         for (const e of edges) if (e.points.length < 2 || e.points.some((q) => !Number.isFinite(q.x) || !Number.isFinite(q.y))) throw new Error('tracé invalide');
         runs++;
       } catch (e) {

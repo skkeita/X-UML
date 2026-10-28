@@ -105,7 +105,7 @@ interface PortGroup {
   keys: Map<string, { sort: number; count: number }>;
 }
 
-function assignPorts(plans: Plan[]): Map<string, Point> {
+function assignPorts(plans: Plan[], pinned: Map<number, EdgeAnchors> = new Map()): Map<string, Point> {
   const groups = new Map<string, PortGroup>();
   const add = (boxName: string, box: Rect, side: Side, key: string, other: Rect) => {
     const gk = `${boxName}|${side}`;
@@ -122,9 +122,11 @@ function assignPorts(plans: Plan[]): Map<string, Point> {
   };
 
   for (const p of plans) {
-    add(p.relation.from, p.a, p.sideA, `e${p.index}`, p.b);
-    const shared = TREE_KINDS.includes(p.relation.kind);
-    add(p.relation.to, p.b, p.sideB, shared ? `tree-${p.relation.kind}` : `e${p.index}`, p.a);
+    // Une extrémité placée à la main ne prend pas de place dans la répartition automatique.
+    const pin = pinned.get(p.index);
+    if (!pin?.start) add(p.relation.from, p.a, p.sideA, `e${p.index}`, p.b);
+    const shared = TREE_KINDS.includes(p.relation.kind) && !pin?.end;
+    if (!pin?.end) add(p.relation.to, p.b, p.sideB, shared ? `tree-${p.relation.kind}` : `e${p.index}`, p.a);
   }
 
   const ports = new Map<string, Point>();
@@ -165,6 +167,11 @@ function simplify(points: Point[]): Point[] {
   if (out.length === 1) out.push({ ...out[0] });
   if (out.length === 0 && points.length) out.push({ ...points[0] }, { ...points[points.length - 1] });
   return out;
+}
+
+/** Trajet orthogonal de secours entre deux sorties quelconques (côtés imposés non alignés). */
+function elbow(pa: Point, sa: Point, sb: Point, pb: Point): Point[] {
+  return [pa, sa, { x: sb.x, y: sa.y }, sb, pb];
 }
 
 /** Trajet en « Z » entre deux ports qui se font face. */
@@ -288,6 +295,8 @@ function searchRoute(
   occupied: Point[][] = [],
   /** Zones à éviter en plus des classes (pointes de flèche des autres liens). */
   extraZones: Zone[] = [],
+  /** Extrémités placées à la main : seul leur côté est autorisé. */
+  lock: { a?: boolean; b?: boolean } = {},
 ): Point[] | null {
   // Segments déjà dessinés par les autres liens : on évite de rouler dessus.
   const used: { horiz: boolean; c: number; lo: number; hi: number }[] = [];
@@ -316,12 +325,13 @@ function searchRoute(
   const blocked = (x: number, y: number) => zones.some((z) => x > z.x0 && x < z.x1 && y > z.y0 && y < z.y1);
 
   const terminals = (r: Rect, prefer: Side, which: 'a' | 'b'): Terminal[] =>
-    SIDES.map((side) => {
+    (lock[which] ? [prefer] : SIDES).map((side) => {
       const port = portFor(r, side, which);
       return { side, port, stub: stubOf(r, side, port), cost: CLEARANCE + (side === prefer ? 0 : SIDE_COST) };
     }).filter(
       // Ni le point de sortie, ni le petit segment ancrage → sortie ne doivent toucher une zone réservée.
-      (t) => !blocked(t.stub.x, t.stub.y) && !extraZones.some((z) => segHitsZone(t.port, t.stub, z)),
+      // Extrémité placée à la main : on respecte le choix, même dans un passage serré.
+      (t) => !!lock[which] || (!blocked(t.stub.x, t.stub.y) && !extraZones.some((z) => segHitsZone(t.port, t.stub, z))),
     );
   const starts = terminals(a, preferA, 'a');
   const goals = terminals(b, preferB, 'b');
@@ -687,7 +697,57 @@ export interface RouteOptions {
   frames?: Set<string>;
   /** Formes non rectangulaires : l'extrémité du lien est ramenée sur la forme réelle. */
   shapes?: Record<string, 'ellipse' | 'actor'>;
+  /** Extrémités placées à la main (clé : relationKey), sinon le placement est automatique. */
+  anchors?: Record<string, EdgeAnchors>;
 }
+
+/** Point d'attache imposé : un côté de la boîte et une position le long de ce côté (0 → 1). */
+export interface Anchor {
+  side: Side;
+  t: number;
+}
+export interface EdgeAnchors {
+  start?: Anchor;
+  end?: Anchor;
+}
+
+/**
+ * Identifiant stable d'une relation pour mémoriser ses extrémités : « A>B », et « A>B#2 »
+ * pour la deuxième relation entre les mêmes éléments (le type peut changer sans tout perdre).
+ */
+export function relationKey(relations: Pick<Relation, 'from' | 'to'>[], index: number): string {
+  const r = relations[index];
+  let n = 0;
+  for (let i = 0; i < index; i++) if (relations[i].from === r.from && relations[i].to === r.to) n++;
+  return n === 0 ? `${r.from}>${r.to}` : `${r.from}>${r.to}#${n + 1}`;
+}
+
+/** Point du bord d'une boîte correspondant à un ancrage. */
+export function anchorPoint(r: Rect, a: Anchor): Point {
+  const t = Math.min(1, Math.max(0, a.t));
+  switch (a.side) {
+    case 'top':
+      return { x: r.x + r.w * t, y: r.y };
+    case 'bottom':
+      return { x: r.x + r.w * t, y: r.y + r.h };
+    case 'left':
+      return { x: r.x, y: r.y + r.h * t };
+    case 'right':
+      return { x: r.x + r.w, y: r.y + r.h * t };
+  }
+}
+
+/** Ancrage le plus proche d'un point (côté le plus proche, position projetée, arrondie au 1/20). */
+export function anchorAt(r: Rect, p: Point): Anchor {
+  const d = { top: Math.abs(p.y - r.y), bottom: Math.abs(p.y - (r.y + r.h)), left: Math.abs(p.x - r.x), right: Math.abs(p.x - (r.x + r.w)) };
+  const side = (Object.keys(d) as Side[]).reduce((m, k) => (d[k] < d[m] ? k : m), 'top');
+  const raw = isVerticalSide(side) ? (p.x - r.x) / r.w : (p.y - r.y) / r.h;
+  // Un peu en retrait des coins : une flèche dans l'angle se lit mal.
+  const t = Math.round(Math.min(0.92, Math.max(0.08, raw)) * 20) / 20;
+  return { side, t };
+}
+
+export type { Side };
 
 /**
  * Point d'entrée sûr : quelle que soit la disposition (boîtes superposées pendant un glisser…),
@@ -726,12 +786,23 @@ export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, o
     .filter(([name]) => !frames.has(name))
     .map(([, rect]) => rect);
   const plans: Plan[] = [];
+  // Extrémités placées à la main : leur côté remplace celui choisi automatiquement.
+  const pinned = new Map<number, EdgeAnchors>();
+  relations.forEach((_, index) => {
+    const pin = opts.anchors?.[relationKey(relations, index)];
+    if (pin && (pin.start || pin.end)) pinned.set(index, pin);
+  });
   relations.forEach((r, index) => {
     const a = boxes[r.from];
     const b = boxes[r.to];
-    if (a && b && r.from !== r.to) plans.push(planEdge(index, r, a, b));
+    if (!a || !b || r.from === r.to) return;
+    const plan = planEdge(index, r, a, b);
+    const pin = pinned.get(index);
+    if (pin?.start) plan.sideA = pin.start.side;
+    if (pin?.end) plan.sideB = pin.end.side;
+    plans.push(plan);
   });
-  const ports = assignPorts(plans);
+  const ports = assignPorts(plans, pinned);
 
   // Combien de liens utilisent chaque côté : on ne redresse un lien en trait droit
   // que s'il est seul sur ses deux côtés (sinon les ports répartis priment).
@@ -761,7 +832,7 @@ export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, o
     return true;
   };
   /** Contexte de routage de chaque lien (pour pouvoir le recalculer dans les passes de lisibilité). */
-  const contexts = new Map<number, { a: Rect; b: Rect; plan: Plan; pa: Point; pb: Point; obstacles: Rect[]; sharedEnd: boolean }>();
+  const contexts = new Map<number, { a: Rect; b: Rect; plan: Plan; pa: Point; pb: Point; obstacles: Rect[]; sharedEnd: boolean; lock: { a: boolean; b: boolean } }>();
   relations.forEach((r, index) => {
     const a = boxes[r.from];
     const b = boxes[r.to];
@@ -785,16 +856,19 @@ export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, o
 
     const p = plans.find((pl) => pl.index === index);
     if (!p) return;
-    const shared = TREE_KINDS.includes(r.kind);
+    const pin = pinned.get(index);
+    const lock = { a: !!pin?.start, b: !!pin?.end };
+    const shared = TREE_KINDS.includes(r.kind) && !lock.b;
     const keyA = `e${index}`;
     const keyB = shared ? `tree-${r.kind}` : `e${index}`;
-    const okA = (pt: Point) => spaced(r.from, p.sideA, keyA, pt);
-    const okB = (pt: Point) => spaced(r.to, p.sideB, keyB, pt);
-    let pa = ports.get(`${r.from}|${p.sideA}|e${index}`) ?? sideCenter(a, p.sideA);
-    let pb = ports.get(`${r.to}|${p.sideB}|${shared ? `tree-${r.kind}` : `e${index}`}`) ?? sideCenter(b, p.sideB);
+    // Une extrémité placée à la main ne bouge jamais (ni redressement, ni alignement).
+    const okA = (pt: Point) => !lock.a && spaced(r.from, p.sideA, keyA, pt);
+    const okB = (pt: Point) => !lock.b && spaced(r.to, p.sideB, keyB, pt);
+    let pa = pin?.start ? anchorPoint(a, pin.start) : (ports.get(`${r.from}|${p.sideA}|e${index}`) ?? sideCenter(a, p.sideA));
+    let pb = pin?.end ? anchorPoint(b, pin.end) : (ports.get(`${r.to}|${p.sideB}|${keyB}`) ?? sideCenter(b, p.sideB));
 
     // Classes alignées (chevauchement suffisant sur l'axe transversal) → trait parfaitement droit.
-    const alone = sideUse.get(`${r.from}|${p.sideA}`) === 1 && sideUse.get(`${r.to}|${p.sideB}`) === 1;
+    const alone = !lock.a && !lock.b && sideUse.get(`${r.from}|${p.sideA}`) === 1 && sideUse.get(`${r.to}|${p.sideB}`) === 1;
     if (alone) {
       const lo = p.vertical ? Math.max(a.x, b.x) : Math.max(a.y, b.y);
       const hi = p.vertical ? Math.min(a.x + a.w, b.x + b.w) : Math.min(a.y + a.h, b.y + b.h);
@@ -814,7 +888,7 @@ export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, o
     // sauf si l'arrivée est un point partagé (arbre d'héritage) : le bouger casserait l'arbre.
     const sharedEnd = shared && (treeUse.get(`${r.to}|${p.sideB}|${r.kind}`) ?? 0) > 1;
     const jog = p.vertical ? pb.x - pa.x : pb.y - pa.y;
-    if (jog !== 0 && Math.abs(jog) < MAX_JOG) {
+    if (!lock.a && !lock.b && jog !== 0 && Math.abs(jog) < MAX_JOG) {
       const lo = (p.vertical ? Math.max(a.x, b.x) : Math.max(a.y, b.y)) + 6;
       const hi = (p.vertical ? Math.min(a.x + a.w, b.x + b.w) : Math.min(a.y + a.h, b.y + b.h)) - 6;
       if (hi >= lo) {
@@ -835,16 +909,20 @@ export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, o
       .filter(([name]) => name !== r.from && name !== r.to && !frames.has(name))
       .map(([, rect]) => rect);
 
-    let points = zRoute(pa, pb, p.vertical);
+    // Côtés imposés de même orientation que le trajet automatique : le « Z » reste possible ;
+    // sinon (ex. départ par la droite, arrivée par le haut) on passe par la recherche de trajet.
+    const facing = isVerticalSide(p.sideA) === p.vertical && isVerticalSide(p.sideB) === p.vertical;
+    let points = facing ? zRoute(pa, pb, p.vertical) : [pa, stubOf(a, p.sideA, pa), stubOf(b, p.sideB, pb), pb];
     // Le trajet simple doit rester à l'écart des autres classes ET ne pas recouper les deux classes reliées.
-    if (collides(points, obstacles) || crossesOwn(points, a, b)) {
+    if (!facing || collides(points, obstacles) || crossesOwn(points, a, b)) {
       const portFor = (box: Rect, side: Side, which: 'a' | 'b') => {
         if (which === 'a' && side === p.sideA) return pa;
         if (which === 'b' && side === p.sideB) return pb;
         return sideCenter(box, side);
       };
-      const routed = searchRoute(a, b, solid, p.sideA, p.sideB, portFor, edges.map((e) => e.points));
+      const routed = searchRoute(a, b, solid, p.sideA, p.sideB, portFor, edges.map((e) => e.points), [], lock);
       if (routed) points = routed;
+      else if (!facing) points = elbow(pa, stubOf(a, p.sideA, pa), stubOf(b, p.sideB, pb), pb);
     }
 
     points = simplify(points);
@@ -855,7 +933,7 @@ export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, o
     finalPorts.set(`${r.from}|${p.sideA}|${keyA}`, points[0]);
     finalPorts.set(`${r.to}|${p.sideB}|${keyB}`, points[points.length - 1]);
     edges.push({ relation: r, d: toPath(points), points, label: labelPoint(points) });
-    contexts.set(edges.length - 1, { a, b, plan: p, pa, pb, obstacles, sharedEnd });
+    contexts.set(edges.length - 1, { a, b, plan: p, pa, pb, obstacles, sharedEnd, lock });
   });
 
   // Passe de lisibilité n° 1 : un lien ne doit pas passer sur la pointe de flèche d'un autre.
@@ -875,10 +953,10 @@ export function routeEdges(relations: Relation[], boxes: Record<string, Rect>, o
         return sideCenter(box, side);
       };
       const occupied = edges.filter((_, j) => j !== i).map((o) => o.points);
-      const routed = searchRoute(c.a, c.b, allBoxes, c.plan.sideA, c.plan.sideB, portFor, occupied, zones);
+      const routed = searchRoute(c.a, c.b, allBoxes, c.plan.sideA, c.plan.sideB, portFor, occupied, zones, c.lock);
       if (!routed) return;
       let pts = simplify(routed);
-      const smoothed = removeEndJogs(pts, c.a, c.b, c.sharedEnd);
+      const smoothed = removeEndJogs(pts, c.a, c.b, c.sharedEnd, (which) => !c.lock[which]);
       if (!collides(smoothed, c.obstacles) && !crossesOwn(smoothed, c.a, c.b) && !pathHitsZones(smoothed, zones)) pts = smoothed;
       if (pathHitsZones(pts, zones)) return;
       // On ne remplace un trajet « trop proche » que par un trajet qui ne l'est plus.
