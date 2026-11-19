@@ -20,30 +20,88 @@ export interface SceneTheme {
   noteFill?: string;
 }
 
+/* ------------------------------------------------------------------ */
+/* Charte : monochrome + violet pastel                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Miroir hexadécimal des variables CSS de src/index.css (rôle → couleur, par mode).
+ * Choix technique : l'interface lit les variables CSS, mais le SVG exporté doit rester
+ * autonome (ouvert hors de l'application) → il lui faut des valeurs en dur. Le test
+ * theme.sync.test.ts garantit que ce miroir et la feuille de style ne divergent jamais.
+ */
+export const PALETTE = {
+  light: {
+    bg: '#FAFAFA',
+    surface: '#FFFFFF',
+    'surface-2': '#F2F2F2',
+    line: '#E4E4E4',
+    'line-strong': '#8C8C8C',
+    fg: '#171717',
+    'fg-muted': '#6B6B6B',
+    accent: '#C4B5FD',
+    'accent-hover': '#B3A1FB',
+    'accent-ink': '#171717',
+    'accent-strong': '#6C55D3',
+    'accent-soft': '#F6F3FF',
+  },
+  dark: {
+    bg: '#0A0A0A',
+    surface: '#171717',
+    'surface-2': '#262626',
+    line: '#333333',
+    'line-strong': '#6B6B6B',
+    fg: '#F2F2F2',
+    'fg-muted': '#A3A3A3',
+    accent: '#C4B5FD',
+    'accent-hover': '#D6CBFE',
+    'accent-ink': '#0A0A0A',
+    'accent-strong': '#C4B5FD',
+    'accent-soft': '#231F33',
+  },
+} as const;
+
+export type ColorRole = keyof (typeof PALETTE)['light'];
+
+/** Nom de la variable CSS d'un rôle, pour un style en ligne : `rgb(${cssVar('accent')})`. */
+export const cssVar = (role: ColorRole): string => `var(--${role})`;
+
+/** Jetons de mouvement (miroir de --ease / --dur-* pour les animations lancées en JavaScript). */
+export const MOTION = {
+  ease: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  fast: 150,
+  base: 200,
+  slow: 250,
+} as const;
+
+/** Vrai si l'utilisateur a demandé moins d'animations : on n'en joue alors aucune. */
+export const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export const LIGHT: SceneTheme = {
-  bg: '#F3F5F8', // calque
-  grid: '#C5D0DB',
-  boxFill: '#FFFFFF',
-  boxStroke: '#3B4859', // trait d'encre net, comme sur un plan
-  headerFill: '#E2EBF6', // en-tête bleu cobalt très clair
-  text: '#17212D',
-  muted: '#5E6C7E',
-  edge: '#2F3B4A',
-  accent: '#1F5FAD', // cobalt : sélection, poignées
-  noteFill: '#FBF5DD',
+  bg: PALETTE.light.bg,
+  grid: '#CFCFCF',
+  boxFill: PALETTE.light.surface,
+  boxStroke: '#262626', // trait noir net : la boîte se lit avant tout le reste
+  headerFill: PALETTE.light['surface-2'],
+  text: PALETTE.light.fg,
+  muted: PALETTE.light['fg-muted'],
+  edge: '#3D3D3D',
+  accent: PALETTE.light['accent-strong'], // sélection, poignées : violet soutenu (3:1 sur le fond clair)
+  noteFill: '#F2F2F2',
 };
 
 export const DARK: SceneTheme = {
-  bg: '#0E1620',
-  grid: '#223142',
-  boxFill: '#142030',
-  boxStroke: '#5D7189',
-  headerFill: '#1A3250',
-  text: '#E5EBF1',
-  muted: '#98A7B8',
-  edge: '#A2B2C4',
-  accent: '#6FA3E3',
-  noteFill: '#2A2719',
+  bg: PALETTE.dark.bg,
+  grid: '#333333',
+  boxFill: PALETTE.dark.surface,
+  boxStroke: '#8C8C8C',
+  headerFill: PALETTE.dark['surface-2'],
+  text: PALETTE.dark.fg,
+  muted: PALETTE.dark['fg-muted'],
+  edge: '#A3A3A3',
+  accent: PALETTE.dark['accent-strong'], // violet pastel
+  noteFill: '#262626',
 };
 
 export const sceneTheme = (name: ThemeName): SceneTheme => (name === 'dark' ? DARK : LIGHT);
@@ -81,7 +139,7 @@ export const luminance = (hex: string): number => {
  */
 export function tinted(theme: SceneTheme, color: string): SceneTheme {
   const light = luminance(color) > 0.35;
-  const text = light ? '#0f172a' : '#ffffff';
+  const text = light ? '#171717' : '#ffffff';
   return {
     ...theme,
     headerFill: color,
@@ -89,7 +147,7 @@ export function tinted(theme: SceneTheme, color: string): SceneTheme {
     // Une note colorée prend la teinte choisie (au lieu du papier jaune par défaut).
     noteFill: light ? mix(color, '#ffffff', 0.4) : mix(color, '#000000', 0.25),
     text,
-    muted: light ? '#475569' : '#e2e8f0',
+    muted: light ? '#525252' : '#E4E4E4',
     boxStroke: light ? mix(color, '#000000', 0.55) : mix(color, '#ffffff', 0.35),
   };
 }

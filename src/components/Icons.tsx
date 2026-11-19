@@ -163,3 +163,9 @@ export const HistoryIcon = ({ size = 16 }: IconProps) => (
     <path d="M3 4v4h4M12 8v4.5l3 2" />
   </Svg>
 );
+export const SearchIcon = () => (
+  <Svg>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M20 20l-3.5-3.5" />
+  </Svg>
+);

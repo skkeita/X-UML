@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
-import { BookIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
+import { BookIcon, SearchIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -28,6 +28,8 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   relationMode: 'simple' | 'custom';
+  /** Ouvre la palette de commandes (Ctrl+K). */
+  onShowPalette: () => void;
   /** Ouvre le catalogue des fonctionnalités (F1). */
   onShowFeatures: () => void;
   /** Apparence du tableau affiché (écrite dans son code). */
@@ -40,8 +42,9 @@ interface Props {
 }
 
 const STATUS: Record<SaveStatus, { label: string; dot: string }> = {
-  saved: { label: 'Enregistré localement', dot: 'bg-emerald-500' },
-  saving: { label: 'Enregistrement…', dot: 'bg-amber-500 animate-pulse' },
+  // Monochrome : gris au repos, violet pendant l'écriture ; le rouge reste réservé à l'erreur.
+  saved: { label: 'Enregistré localement', dot: 'bg-slate-400' },
+  saving: { label: 'Enregistrement…', dot: 'bg-accent-strong animate-pulse' },
   error: { label: 'Échec de la sauvegarde locale', dot: 'bg-red-500' },
 };
 
@@ -65,9 +68,8 @@ function Button({
       title={title}
       aria-pressed={pressed}
       disabled={disabled}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-slate-200 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300 disabled:pointer-events-none disabled:opacity-35 ${
-        pressed ? 'bg-white/10 text-white' : ''
-      }`}
+      // Survol et pression : un voile en opacité et un léger rétrécissement (classe .xu-btn).
+      className="xu-btn"
     >
       {children}
     </button>
@@ -77,26 +79,42 @@ function Button({
 export function Toolbar(p: Props) {
   const status = STATUS[p.saveStatus];
   return (
-    // Barre d'encre : l'identité de l'application (identique en thème clair et sombre).
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-ink-line bg-ink px-3 text-white">
+    // Barre d'application : même surface que les panneaux, séparée par un simple filet.
+    // Elle s'efface devant le diagramme ; la marque tient dans le logo et l'accent violet.
+    <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-line bg-surface px-3 text-fg">
       <div className="flex items-center gap-3">
         <Button onClick={p.onToggleEditor} title="Afficher / masquer l’éditeur (Ctrl+B)" pressed={p.editorOpen}>
           <PanelIcon />
         </Button>
         <span className="flex items-center gap-2 select-none">
           <Logo />
-          <span className="text-[15px] font-semibold tracking-tight text-white">X-UML</span>
+          <span className="text-[15px] font-semibold tracking-tight text-fg">X-UML</span>
         </span>
         {/* Indicateur discret : rassure sans jamais demander d'action */}
-        <span className="hidden items-center gap-1.5 text-xs text-slate-300 sm:flex" role="status" aria-live="polite">
+        <span className="hidden items-center gap-1.5 text-xs text-fg-muted lg:flex" role="status" aria-live="polite">
           <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
           {status.label}
         </span>
       </div>
 
+      {/* Palette de commandes : visible dans la barre pour qu'on la découvre sans connaître Ctrl+K */}
+      <button
+        type="button"
+        onClick={p.onShowPalette}
+        title="Rechercher une action (Ctrl+K)"
+        className="hidden h-8 min-w-0 max-w-xs flex-1 items-center gap-2 rounded-md border border-line bg-canvas px-2.5 text-[13px] text-fg-muted hover:border-line-strong hover:text-fg xl:flex"
+      >
+        <SearchIcon />
+        <span className="truncate">Rechercher une action…</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          <kbd className="xu-kbd">Ctrl</kbd>
+          <kbd className="xu-kbd">K</kbd>
+        </span>
+      </button>
+
       <div className="flex items-center gap-1">
         {/* Mode d'édition : script (Code) ou construction à la souris (Visuel) — le script reste la référence */}
-        <div role="radiogroup" aria-label="Mode d’édition" className="mr-1 hidden rounded-lg bg-black/25 p-0.5 md:flex">
+        <div role="radiogroup" aria-label="Mode d’édition" className="mr-1 hidden rounded-lg bg-surface-2 p-0.5 md:flex">
           {(
             [
               ['simple', 'Code', 'Mode Code : le diagramme s’écrit sous forme de script, relations comprises — le plus rapide au clavier.'],
@@ -110,8 +128,8 @@ export function Toolbar(p: Props) {
               aria-checked={p.relationMode === value}
               title={title}
               onClick={() => p.onRelationModeChange(value)}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                p.relationMode === value ? 'bg-white text-ink shadow-sm' : 'text-slate-300 hover:text-white'
+              className={`rounded-md px-3 py-1 text-xs font-medium ${
+                p.relationMode === value ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'
               }`}
             >
               {label}
@@ -128,7 +146,7 @@ export function Toolbar(p: Props) {
         <Button onClick={p.onShowVersions} title="Historique des versions : revenir à l’état d’il y a 10 minutes, une heure, hier…">
           <HistoryIcon />
         </Button>
-        <span className="mx-1 h-5 w-px bg-white/15" aria-hidden="true" />
+        <span className="mx-1 h-5 w-px bg-line" aria-hidden="true" />
         <StyleMenu {...p} />
         <Button onClick={p.onImport} title="Importer un projet (Ctrl+O) — ou glissez le fichier sur la fenêtre">
           <UploadIcon />
@@ -224,7 +242,7 @@ function ExportMenu({
         <span className="hidden sm:inline">Exporter</span>
       </Button>
       {open && (
-        <div role="menu" className="absolute right-0 top-10 z-30 w-80 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div role="menu" className="absolute right-0 top-10 z-30 w-80 origin-top-right animate-pop-in rounded-lg border border-line bg-surface p-1 shadow-lg">
           {many && (
             <fieldset className="mb-1 border-b border-slate-100 px-2.5 pb-2 pt-1.5 dark:border-slate-800">
               <legend className="sr-only">Tableaux à exporter</legend>
@@ -290,8 +308,8 @@ function Switch({ label, hint, checked, disabled, onChange }: { label: string; h
       onClick={() => onChange(!checked)}
       className="flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent dark:hover:bg-slate-800"
     >
-      <span className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors ${checked ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'}`}>
-        <span className={`h-3 w-3 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-3' : ''}`} />
+      <span className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 ${checked ? 'bg-accent-strong' : 'bg-slate-300 dark:bg-slate-600'}`}>
+        <span className={`h-3 w-3 rounded-full bg-white shadow transition-transform duration-fast ${checked ? 'translate-x-3' : ''}`} />
       </span>
       <span>
         <span className="block text-sm text-slate-800 dark:text-slate-100">{label}</span>
@@ -325,7 +343,7 @@ function StyleMenu(p: Props) {
         <span className="hidden lg:inline">Style</span>
       </Button>
       {open && (
-        <div role="dialog" aria-label="Style du tableau" className="absolute right-0 top-10 z-30 w-80 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+        <div role="dialog" aria-label="Style du tableau" className="absolute right-0 top-10 z-30 w-80 origin-top-right animate-pop-in rounded-lg border border-line bg-surface p-1 shadow-lg">
           <Switch
             label="Coins arrondis"
             hint="Décoché : boîtes à angles droits, plus sobres pour un rapport"
@@ -353,13 +371,13 @@ function StyleMenu(p: Props) {
   );
 }
 
-/** Marque X-UML : une boîte de classe UML (nom, attributs, opérations) tracée au cobalt. */
-function Logo() {
+/** Marque X-UML : une boîte de classe UML au trait, le nom de la classe en violet (le seul accent). */
+export function Logo({ size = 22 }: { size?: number }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-      <rect x="1.5" y="1.5" width="19" height="19" rx="3.5" fill="#1F5FAD" />
-      <rect x="5" y="5" width="12" height="12" rx="1.2" fill="none" stroke="#fff" strokeWidth="1.5" />
-      <path d="M5 9.2h12M5 13h12" stroke="#fff" strokeWidth="1.3" />
+    <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <rect x="2" y="2" width="18" height="18" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M2 8.5h18M2 14.5h18" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M5.5 5.3h6.5" stroke="rgb(var(--accent-strong))" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }

@@ -318,7 +318,7 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
             className="resize-none rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950"
           />
           <div className="flex items-center gap-1">
-            <button type="submit" disabled={!noteDraft.trim()} className="h-8 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-40">
+            <button type="submit" disabled={!noteDraft.trim()} className="h-8 rounded-md bg-accent px-3 text-xs font-medium text-accent-ink hover:bg-accent-hover disabled:opacity-40">
               Ajouter la note
             </button>
             <button type="button" className={btn} onClick={() => setStep('root')}>
@@ -340,7 +340,7 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
             aria-label={step === 'package' ? groupPlaceholder : step === 'rename' ? 'Nouveau titre du groupe' : 'Titre du diagramme'}
             className="h-8 w-52 rounded-md border border-slate-200 bg-white px-2 text-sm focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-950"
           />
-          <button type="submit" className="h-8 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500">
+          <button type="submit" className="h-8 rounded-md bg-accent px-3 text-xs font-medium text-accent-ink hover:bg-accent-hover">
             {step === 'package' ? 'Créer' : step === 'rename' ? 'Renommer' : 'Encadrer'}
           </button>
           <button type="button" className={btn} onClick={() => setStep('root')}>
