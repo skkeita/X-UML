@@ -20,7 +20,7 @@ export function Toast({ toast, onClose }: { toast: ToastData | null; onClose: ()
   return (
     <div
       role={toast.tone === 'error' ? 'alert' : 'status'}
-      className={`fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2.5 text-sm shadow-lg ${
+      className={`fixed bottom-5 left-1/2 z-50 flex animate-toast-in items-center gap-3 rounded-lg px-4 py-2.5 text-sm shadow-lg ${
         toast.tone === 'error' ? 'bg-red-600 text-white' : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
       }`}
     >
@@ -32,7 +32,7 @@ export function Toast({ toast, onClose }: { toast: ToastData | null; onClose: ()
             toast.action?.onClick();
             onClose();
           }}
-          className="font-semibold text-indigo-300 hover:underline dark:text-indigo-600"
+          className="font-semibold text-indigo-300 underline-offset-2 hover:underline dark:text-indigo-700"
         >
           {toast.action.label}
         </button>

@@ -44,7 +44,7 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
   return (
     <nav
       aria-label="Tableaux du projet"
-      className="relative flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-slate-200 bg-slate-100 px-2 dark:border-slate-800 dark:bg-slate-900/70"
+      className="relative flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-line bg-surface-2 px-2"
     >
       <div role="tablist" className="flex items-end gap-0.5">
         {boards.map((b) => {
@@ -62,11 +62,11 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
                 setDraft(b.name);
               }}
               title="Double-clic pour renommer"
-              // Onglet actif : la feuille au premier plan, repérée par un filet cobalt (comme un onglet de classeur).
+              // Onglet actif : la feuille au premier plan, repérée par un filet violet (comme un onglet de classeur).
               className={`group -mb-px flex h-8 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-3 text-[13px] ${
                 active
-                  ? 'border-slate-200 border-t-2 border-t-indigo-600 bg-white font-medium text-slate-900 dark:border-slate-700 dark:border-t-indigo-400 dark:bg-slate-950 dark:text-white'
-                  : 'border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60'
+                  ? 'border-line border-t-2 border-t-accent-strong bg-canvas font-medium text-fg'
+                  : 'border-transparent text-fg-muted hover:bg-surface/70 hover:text-fg'
               }`}
             >
               {editing === b.id ? (
@@ -117,7 +117,7 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
           + Nouveau
         </button>
         {menu && (
-          <div role="menu" className="fixed z-40 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div role="menu" className="fixed z-40 mt-1 w-72 origin-top-left animate-pop-in rounded-lg border border-line bg-surface p-1 shadow-lg">
             {TEMPLATES.map((t) => (
               <button
                 key={t.id}

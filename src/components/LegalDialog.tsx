@@ -214,12 +214,12 @@ export function LegalDialog({ tab, onTab, onClose, onExport }: { tab: LegalTab; 
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 backdrop-blur-[2px] sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-slate-900/40 p-3 backdrop-blur-[2px] sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Informations légales"
-        className="flex h-full max-h-[760px] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950"
+        className="animate-pop-in flex h-full max-h-[760px] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 pt-3 dark:border-slate-800">
           <div role="tablist" aria-label="Informations légales" className="flex gap-1">

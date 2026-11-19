@@ -374,6 +374,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: '1, 2, 3…', action: 'Type de la relation choisie ou en cours de création (dans l’ordre du menu)' },
   { keys: 'R', action: 'Inverser le sens de la relation choisie' },
   { keys: 'Ctrl+Espace', action: 'Autocomplétion (mode Code)' },
+  { keys: 'Ctrl+K', action: 'Palette de commandes : rechercher et lancer une action' },
   { keys: 'Ctrl+B', action: 'Afficher / masquer le panneau de gauche' },
   { keys: 'Ctrl+S', action: 'Exporter le projet (tous les tableaux)' },
   { keys: 'Ctrl+P', action: 'Exporter le tableau affiché en PDF' },

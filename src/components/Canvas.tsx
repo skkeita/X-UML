@@ -1036,13 +1036,13 @@ export function Canvas({
       )}
 
       {endDrag && (
-        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1.5 text-xs text-white shadow-md">
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 animate-fade-in rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink shadow-md">
           Déposez sur le même élément pour choisir le point d’attache, ou sur un autre pour y relier la flèche · Échap pour annuler
         </div>
       )}
 
       {link?.phase === 'target' && (
-        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1.5 text-xs text-white shadow-md">
+        <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 animate-fade-in rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink shadow-md">
           {targetLabel} depuis <span className="font-mono">{link.from}</span> : cliquez sur {targetPhrase(vocab)} · Échap pour annuler
         </div>
       )}

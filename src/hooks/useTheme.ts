@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ThemeName } from '../core/theme';
+import { flushSync } from 'react-dom';
+import { prefersReducedMotion, type ThemeName } from '../core/theme';
 
 const KEY = 'x-uml:theme';
 
@@ -13,6 +14,8 @@ function initialTheme(): ThemeName {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+type ViewTransitionDocument = Document & { startViewTransition?: (update: () => void) => unknown };
+
 export function useTheme(): { theme: ThemeName; toggle: () => void } {
   const [theme, setTheme] = useState<ThemeName>(initialTheme);
 
@@ -25,6 +28,21 @@ export function useTheme(): { theme: ThemeName; toggle: () => void } {
     }
   }, [theme]);
 
-  const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
+  // Bascule clair / sombre en fondu enchaîné (View Transitions) : le navigateur fond deux
+  // captures de la page en opacité, sur le compositeur — aucune transition de couleur élément
+  // par élément. Sans l'API, ou en mouvement réduit, le thème change simplement d'un coup.
+  const toggle = useCallback(() => {
+    const apply = () =>
+      flushSync(() =>
+        setTheme((t) => {
+          const next = t === 'dark' ? 'light' : 'dark';
+          document.documentElement.classList.toggle('dark', next === 'dark');
+          return next;
+        }),
+      );
+    const doc = document as ViewTransitionDocument;
+    if (doc.startViewTransition && !prefersReducedMotion()) doc.startViewTransition(apply);
+    else apply();
+  }, []);
   return { theme, toggle };
 }

@@ -124,7 +124,7 @@ function LabelInput({ value, onCommit, placeholder = 'libellé', label = 'Libell
 }
 
 const SELECT =
-  'h-7 w-full min-w-0 truncate rounded-md border border-slate-200 bg-white px-1.5 font-mono text-xs text-sky-700 hover:border-indigo-300 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300';
+  'h-7 w-full min-w-0 truncate rounded-md border border-slate-200 bg-white px-1.5 font-mono text-xs text-fg hover:border-indigo-300 focus:border-indigo-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900';
 
 /**
  * Relations du diagramme, réglées avec des menus : aucun symbole à mémoriser ni à taper.

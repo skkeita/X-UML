@@ -1,11 +1,13 @@
 import type { Suggestion } from '../core/complete';
 
+// Pastilles neutres : le libellé suffit à distinguer les types, l'accent reste pour la ligne active.
+const NEUTRAL = 'bg-surface-2 text-fg-muted';
 const BADGE: Record<Suggestion['type'], string> = {
-  classe: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
-  élément: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
-  attribut: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
-  méthode: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  'mot-clé': 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
+  classe: NEUTRAL,
+  élément: NEUTRAL,
+  attribut: NEUTRAL,
+  méthode: NEUTRAL,
+  'mot-clé': NEUTRAL,
 };
 
 interface Props {

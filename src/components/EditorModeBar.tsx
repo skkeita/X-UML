@@ -78,7 +78,7 @@ export function FocusPlaceholder({
         <button
           type="button"
           onClick={() => onDeclare?.(implicit)}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent-hover"
         >
           Déclarer {implicit}
         </button>

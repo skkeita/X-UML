@@ -324,7 +324,7 @@ export function Inspector(p: Props) {
                     onKeyDown={(e) => e.key === 'Escape' && setAdding(null)}
                     className={FIELD}
                   />
-                  <button type="submit" className="h-8 shrink-0 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white hover:bg-indigo-500">
+                  <button type="submit" className="h-8 shrink-0 rounded-md bg-accent px-3 text-xs font-medium text-accent-ink hover:bg-accent-hover">
                     Ajouter
                   </button>
                 </form>
