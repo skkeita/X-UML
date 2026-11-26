@@ -19,7 +19,9 @@ import { Inspector } from './components/Inspector';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FeaturesDialog } from './components/FeaturesDialog';
 import { CommandPalette, type Command } from './components/CommandPalette';
-import { BookIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './components/Icons';
+import { AiPanel } from './components/AiPanel';
+import { validate } from './core/validate';
+import { BookIcon, ChatIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './components/Icons';
 import { TEMPLATES } from './core/templates';
 import { MOTION, prefersReducedMotion } from './core/theme';
 import { LEGAL_TABS, LegalDialog, type LegalTab } from './components/LegalDialog';
@@ -819,6 +821,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', onF1);
   }, []);
 
+  // Assistant IA : panneau à droite du diagramme (fermé, il reste monté et garde la conversation).
+  const [aiOpen, setAiOpen] = useState(false);
+  // Avertissements de la vérification du modèle, transmis à l'IA avec le script (calcul léger).
+  const aiIssues = useMemo(() => validate(diagram), [diagram]);
+  const applyAiScript = useCallback(
+    (script: string) => {
+      history.push(onActive((b) => ({ ...b, source: script })));
+      setToast({ id: Date.now(), message: 'Modification de l’IA appliquée.', tone: 'success', action: { label: 'Annuler', onClick: undo } });
+    },
+    [onActive, history.push, undo], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // Palette de commandes (Ctrl+K) : toutes les actions au clavier.
   const [paletteOpen, setPaletteOpen] = useState(false);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
@@ -881,6 +895,7 @@ export default function App() {
     { id: 'mode-visual', group: 'Mode', label: 'Mode Visuel', tags: 'souris menus', disabled: relationMode === 'custom', run: () => setRelationMode('custom') },
     ...TEMPLATES.map((t) => ({ id: `new-${t.id}`, group: 'Nouveau tableau', label: `Nouveau tableau : ${t.label}`, tags: 'créer onglet exemple', run: () => addBoard(t) })),
     ...boards.filter((b) => b.id !== active.id).map((b) => ({ id: `go-${b.id}`, group: 'Aller au tableau', label: `Aller au tableau « ${b.name} »`, tags: 'onglet ouvrir', run: () => setActiveId(b.id) })),
+    { id: 'ai', group: 'Assistant IA', label: aiOpen ? 'Fermer l’assistant IA' : 'Ouvrir l’assistant IA', icon: <ChatIcon />, tags: 'intelligence artificielle tuteur aide claude gemini chat', run: () => setAiOpen((o) => !o) },
     { id: 'features', group: 'Aide', label: 'Fonctionnalités et raccourcis', keys: 'F1', icon: <BookIcon />, tags: 'aide documentation', run: () => setFeaturesOpen(true) },
     { id: 'legal', group: 'Aide', label: 'Mentions légales et confidentialité', run: () => openLegal('mentions') },
   ];
@@ -1020,6 +1035,8 @@ export default function App() {
         onRelationModeChange={setRelationMode}
         onShowFeatures={() => setFeaturesOpen(true)}
         onShowPalette={() => setPaletteOpen(true)}
+        aiOpen={aiOpen}
+        onToggleAi={() => setAiOpen((o) => !o)}
         corners={diagram.style?.corners ?? 'rounded'}
         onCornersChange={(c) => editSource((src) => setCorners(src, c))}
         legendCount={diagram.style?.legend.length ?? 0}
@@ -1031,7 +1048,8 @@ export default function App() {
         leftOpen={editorOpen}
         left={editorPanel}
         right={
-          <div ref={canvasWrap} className="h-full w-full">
+          <div className="flex h-full w-full">
+          <div ref={canvasWrap} className="h-full min-w-0 flex-1">
           <ErrorBoundary resetKey={`${active.id}|${source}|${JSON.stringify(stored)}|${JSON.stringify(active.anchors ?? {})}`} onUndo={undo}>
           <Canvas
             diagram={diagram}
@@ -1071,6 +1089,14 @@ export default function App() {
             focus={focusActive ? focusName : null}
           />
           </ErrorBoundary>
+          </div>
+          <AiPanel
+            open={aiOpen}
+            onOpen={() => setAiOpen(true)}
+            onClose={() => setAiOpen(false)}
+            context={{ boardName: active.name, diagramType, source: active.source, errors: result.errors, issues: aiIssues }}
+            onApply={applyAiScript}
+          />
           </div>
         }
       />

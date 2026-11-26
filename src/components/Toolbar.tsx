@@ -3,7 +3,7 @@ import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
 import { LiquidSwitch } from './LiquidSwitch';
-import { BookIcon, SearchIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
+import { BookIcon, ChatIcon, SearchIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
   theme: ThemeName;
@@ -29,6 +29,9 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   relationMode: 'simple' | 'custom';
+  /** Panneau Assistant IA ouvert ou non. */
+  aiOpen: boolean;
+  onToggleAi: () => void;
   /** Ouvre la palette de commandes (Ctrl+K). */
   onShowPalette: () => void;
   /** Ouvre le catalogue des fonctionnalités (F1). */
@@ -142,6 +145,10 @@ export function Toolbar(p: Props) {
           <span className="hidden sm:inline">Importer</span>
         </Button>
         <ExportMenu boards={p.boards} activeId={p.activeId} onExportPdf={p.onExportPdf} onExportCode={p.onExportCode} onShowCodegen={p.onShowCodegen} onShareLink={p.onShareLink} onExportSvg={p.onExportSvg} onExportProject={p.onDownloadProject} />
+        <Button onClick={p.onToggleAi} pressed={p.aiOpen} title="Assistant IA : un tuteur ou un assistant pour votre diagramme">
+          <ChatIcon />
+          <span className="hidden lg:inline">Assistant IA</span>
+        </Button>
         <Button onClick={p.onShowFeatures} title="Toutes les fonctionnalités et les raccourcis (F1)">
           <BookIcon />
           <span className="hidden xl:inline">Fonctionnalités</span>
