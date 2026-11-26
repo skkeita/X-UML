@@ -15,8 +15,8 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "dev": "node scripts/build-mcpb.mjs && vite",
+    "build": "node scripts/build-mcpb.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run"
   },

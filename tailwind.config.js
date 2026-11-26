@@ -54,6 +54,7 @@ export default {
         'fade-in': 'xu-fade-in var(--dur-base) var(--ease) both',
         'pop-in': 'xu-pop-in var(--dur-base) var(--ease) both',
         'panel-in': 'xu-panel-in var(--dur-slow) var(--ease) both',
+        'panel-in-right': 'xu-panel-in-right var(--dur-slow) var(--ease) both',
         'toast-in': 'xu-toast-in var(--dur-slow) var(--ease) both',
       },
     },

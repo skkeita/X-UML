@@ -56,6 +56,38 @@ export const FEATURE_SECTIONS: FeatureSection[] = [
     ],
   },
   {
+    id: 'ai',
+    title: 'Assistant IA',
+    intro: 'Une IA qui travaille avec vous sur le tableau ouvert. Facultatif : rien n’est envoyé tant que vous ne l’avez pas connectée.',
+    items: [
+      {
+        title: 'Mode Tuteur',
+        text: 'L’IA explique, signale les erreurs une à une et donne des indices progressifs, sans jamais donner la solution : pour apprendre en faisant.',
+        how: 'Barre du haut : « Assistant IA », puis « Tuteur ».',
+        tags: 'intelligence artificielle aide cours élève professeur apprendre',
+      },
+      {
+        title: 'Mode Assistant',
+        text: 'L’IA réalise la modification demandée. Vous voyez d’abord les lignes ajoutées et retirées, puis vous choisissez « Appliquer » ou « Ignorer » ; Ctrl+Z annule.',
+        how: 'Panneau Assistant IA, « Assistant ».',
+        keys: ['Ctrl+Z'],
+        tags: 'intelligence artificielle modifier corriger générer',
+      },
+      {
+        title: 'Connecter une IA gratuite',
+        text: 'OpenRouter (modèles gratuits) ou Google Gemini (offre gratuite) : il suffit d’une clé, sans carte bancaire. Claude (Anthropic) et les IA locales compatibles OpenAI (Ollama, LM Studio) sont aussi possibles.',
+        how: 'Panneau Assistant IA, bouton réglages (roue dentée).',
+        tags: 'clé api openrouter gemini claude ollama gratuit',
+      },
+      {
+        title: 'Claude Desktop',
+        text: 'Avec l’extension X-UML, Claude Desktop lit le tableau ouvert et, en mode Assistant, propose des modifications que vous validez dans X-UML. Connexion locale, sans passer par Internet.',
+        how: 'Réglages de l’assistant : télécharger x-uml.mcpb, puis activer « Connexion à Claude Desktop ».',
+        tags: 'mcp extension anthropic desktop',
+      },
+    ],
+  },
+  {
     id: 'diagram',
     title: 'Sur le diagramme',
     items: [

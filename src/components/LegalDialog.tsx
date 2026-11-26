@@ -17,9 +17,9 @@ export const LEGAL_TABS: { id: LegalTab; label: string; hash: string }[] = [
 
 const REPO = 'https://github.com/skkeita/X-UML';
 const AUTHOR = 'skkeita';
-const UPDATED = '28 octobre 2026';
+const UPDATED = '26 novembre 2026';
 /** Clés que l'application écrit dans le stockage du navigateur (voir l'onglet Confidentialité). */
-export const STORAGE_KEYS = ['x-uml:project:v2', 'x-uml:project:v1', 'x-uml:versions:v1', 'x-uml:theme', 'x-uml:relation-mode', 'x-uml:editor-mode', 'x-uml:codegen-lang'];
+export const STORAGE_KEYS = ['x-uml:project:v2', 'x-uml:project:v1', 'x-uml:versions:v1', 'x-uml:theme', 'x-uml:relation-mode', 'x-uml:editor-mode', 'x-uml:codegen-lang', 'x-uml:ai', 'x-uml:ai-key'];
 
 const A = ({ href, children }: { href: string; children: ReactNode }) => (
   <a href={href} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:decoration-indigo-600 dark:text-indigo-300">
@@ -85,6 +85,7 @@ function Confidentialite({ onExport }: { onExport: () => void }) {
   const clear = () => {
     try {
       for (const k of STORAGE_KEYS) localStorage.removeItem(k);
+      sessionStorage.removeItem('x-uml:ai-key');
     } catch {
       /* stockage indisponible : rien à effacer */
     }
@@ -96,16 +97,32 @@ function Confidentialite({ onExport }: { onExport: () => void }) {
     <>
       <H>En résumé</H>
       <P>X-UML ne collecte aucune donnée personnelle. Il n’y a ni compte, ni serveur applicatif, ni cookie, ni mesure d’audience, ni publicité.</P>
+      <P>L’assistant IA est facultatif : tant que vous ne le connectez pas, rien n’est envoyé à un service d’IA (voir « Assistant IA » ci-dessous).</P>
 
       <H>Ce qui reste dans votre navigateur</H>
       <P>
         Pour que votre travail ne soit pas perdu, l’application enregistre dans le stockage local de votre navigateur (localStorage) vos tableaux, leur disposition, l’historique de leurs versions
-        (au plus 30 instantanés) et vos préférences d’affichage (thème clair ou sombre, mode Code ou Visuel, langage de génération de code). Ces informations ne quittent jamais votre ordinateur, sauf si vous les exportez vous-même. Les fichiers que vous
+        (au plus 30 instantanés) et vos préférences d’affichage (thème clair ou sombre, mode Code ou Visuel, langage de génération de code, réglages de l’assistant IA). Ces informations ne quittent jamais votre ordinateur, sauf si vous les exportez vous-même. Les fichiers que vous
         importez sont lus directement dans le navigateur, sans être envoyés nulle part.
       </P>
       <P>
         Ce stockage est strictement nécessaire au service que vous utilisez (enregistrer vos diagrammes et vos réglages) : il est dispensé de consentement selon les
         recommandations de la CNIL, c’est pourquoi aucun bandeau ne vous est présenté.
+      </P>
+
+      <H>Assistant IA (facultatif)</H>
+      <P>
+        Si vous connectez une IA avec votre propre clé (OpenRouter, Google Gemini, Anthropic ou un service compatible), le script du tableau ouvert, ses erreurs et vos messages sont
+        envoyés directement depuis votre navigateur à ce fournisseur, qui les traite selon ses propres conditions et sa politique de confidentialité. Ils ne passent par aucun serveur
+        de X-UML et l’éditeur n’y a pas accès. N’y mettez pas d’informations personnelles ou confidentielles.
+      </P>
+      <P>
+        Votre clé API reste dans ce navigateur : en mémoire de l’onglet (effacée à sa fermeture), ou dans le stockage local si vous cochez « Mémoriser la clé sur cet appareil ».
+        Les réglages de l’assistant (fournisseur, modèle, mode) sont aussi gardés localement. La conversation n’est pas enregistrée.
+      </P>
+      <P>
+        Avec Claude Desktop, l’extension X-UML tourne sur votre ordinateur et communique avec cette page par une connexion locale (127.0.0.1), réservée au site X-UML. Ce que Claude
+        lit du tableau est ensuite traité par Anthropic selon les conditions de votre compte Claude.
       </P>
 
       <H>Liens de partage</H>
@@ -121,7 +138,7 @@ function Confidentialite({ onExport }: { onExport: () => void }) {
         bon fonctionnement du service ; l’éditeur n’y a pas accès. Voir la{' '}
         <A href="https://docs.github.com/fr/site-policy/privacy-policies/github-general-privacy-statement">déclaration de confidentialité de GitHub</A>.
       </P>
-      <P>Aucune autre ressource externe n’est chargée : les polices de caractères et toutes les bibliothèques sont incluses dans l’application.</P>
+      <P>Aucune autre ressource externe n’est chargée : les polices de caractères et toutes les bibliothèques sont incluses dans l’application. Seul l’assistant IA, si vous le connectez, contacte le fournisseur que vous avez choisi.</P>
 
       <H>Vos droits</H>
       <P>
