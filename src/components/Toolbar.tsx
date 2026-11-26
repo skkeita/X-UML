@@ -250,7 +250,7 @@ function ExportMenu({
                   <label key={b.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800">
                     <input type="checkbox" checked={chosen.includes(b.id)} onChange={() => toggle(b.id)} className="h-3.5 w-3.5 accent-indigo-600" />
                     <span className="truncate">{b.name}</span>
-                    {b.id === activeId && <span className="ml-auto shrink-0 text-[11px] text-slate-400">affiché</span>}
+                    {b.id === activeId && <span className="ml-auto shrink-0 text-[11px] text-fg-muted">affiché</span>}
                   </label>
                 ))}
               </div>
@@ -276,7 +276,7 @@ function ExportMenu({
           )}
           {item(<ImageIcon />, 'Image du diagramme (.svg)', n > 1 ? `Une image par tableau (${n} fichiers)` : 'Nette à toutes les tailles, pour un rapport ou un site', onExportSvg)}
           <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-          <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Tableau affiché</p>
+          <p className="px-2.5 pb-0.5 pt-1 text-[11px] font-medium uppercase tracking-wide text-fg-muted">Tableau affiché</p>
           {item(<CodeIcon />, 'Code source (Java, TypeScript, Python)…', 'Squelettes des classes : attributs, signatures, héritage', () => onShowCodegen())}
           {item(<LinkIcon />, 'Copier un lien de partage', 'Le diagramme tient dans le lien : aucun compte, aucun serveur', () => onShareLink())}
           {n === 0 && <p className="px-2.5 pb-1.5 text-xs text-amber-600 dark:text-amber-400">Coche au moins un tableau.</p>}

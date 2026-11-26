@@ -162,7 +162,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
       <header className={`flex shrink-0 items-center gap-2 ${embedded ? 'h-8' : 'h-9 px-2'}`}>
         {embedded ? (
           <h3 className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">
-            {vocab.relationsLabel} <span className="font-normal normal-case text-slate-400">({list.length})</span>
+            {vocab.relationsLabel} <span className="font-normal normal-case text-fg-muted">({list.length})</span>
           </h3>
         ) : (
           <button
@@ -181,7 +181,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
           </button>
         )}
         {filter && !embedded && (
-          <span className="truncate text-xs text-slate-400">
+          <span className="truncate text-xs text-fg-muted">
             de <span className="font-medium text-indigo-600 dark:text-indigo-400">{labelOf(filter)}</span>
           </span>
         )}
@@ -198,7 +198,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
       {open && (
         <div className={embedded ? '' : 'min-h-0 flex-1 overflow-auto px-2 pb-2'}>
           {list.length === 0 ? (
-            <p className="px-1 py-2 text-xs leading-relaxed text-slate-400">
+            <p className="px-1 py-2 text-xs leading-relaxed text-fg-muted">
               Aucune {vocab.relation}. Cliquez sur « + Ajouter », ou tirez un trait depuis l’une des poignées rondes au bord d’un élément du diagramme.
             </p>
           ) : (
@@ -236,7 +236,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
                           onClick={() => onChange(ref, { reverse: true })}
                           title="Inverser le sens"
                           aria-label="Inverser le sens"
-                          className="flex h-7 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                          className="flex h-7 w-6 items-center justify-center rounded text-fg-muted hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                         >
                           <SwapIcon />
                         </button>
@@ -246,7 +246,7 @@ export function RelationsPanel({ relations, elements, filter, vocab, onChange, o
                           disabled={r.via === 'member'}
                           title={r.via === 'member' ? `Changez le type du membre de ${labelOf(r.from)} pour retirer cette relation` : `Supprimer la ${vocab.relation}`}
                           aria-label={`Supprimer la ${vocab.relation}`}
-                          className="flex h-7 w-6 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-red-500/10"
+                          className="flex h-7 w-6 items-center justify-center rounded text-fg-muted hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-red-500/10"
                         >
                           <CloseIcon />
                         </button>

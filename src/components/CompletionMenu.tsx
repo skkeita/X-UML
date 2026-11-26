@@ -43,11 +43,11 @@ export function CompletionMenu({ items, active, left, top, onPick, onHover }: Pr
           >
             <span className={`w-14 shrink-0 rounded px-1 text-center text-[10px] font-semibold ${BADGE[s.type]}`}>{s.type}</span>
             <span className="truncate font-mono">{s.label}</span>
-            {s.detail && <span className="ml-auto shrink-0 pl-2 text-[11px] text-slate-400">{s.detail}</span>}
+            {s.detail && <span className="ml-auto shrink-0 pl-2 text-[11px] text-fg-muted">{s.detail}</span>}
           </li>
         ))}
       </ul>
-      <div className="border-t border-slate-100 px-2.5 py-1 text-[10.5px] text-slate-400 dark:border-slate-800">
+      <div className="border-t border-slate-100 px-2.5 py-1 text-[10.5px] text-fg-muted dark:border-slate-800">
         Flèches : choisir · Entrée ou Tab : valider · Échap : fermer
       </div>
     </div>

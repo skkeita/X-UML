@@ -172,25 +172,29 @@
     @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-line bg-surface-2 px-1 font-sans text-[11px] font-medium text-fg-muted;
   }
 
-  /* ---------------- Sélecteur liquide (LiquidSwitch) ---------------- */
-  /* Deux pastilles de même place : la première arrive en 200 ms, la seconde en 250 ms.
-     L'écart pendant le trajet crée le pont « liquide » une fois passé dans le filtre. */
+  /* ---------------- Effet liquide (components/Liquid.tsx) ---------------- */
+  /* Tête : glisse en 200 ms (transition CSS). Traîne : étirée sur le trajet puis rétractée,
+     animée en JavaScript (Web Animations) en 250 ms, transform seul.
+     Pas de transition avant le premier placement (data-settled) : rien ne « vole » à l'ouverture. */
   .xu-blob {
-    @apply absolute left-0 top-0 h-7 w-16;
+    @apply absolute left-0 top-0;
+    transform-origin: 0 0;
     will-change: transform;
   }
   .xu-blob-body {
-    @apply absolute inset-0 rounded-md bg-accent;
+    @apply absolute inset-0;
   }
-  .xu-blob-lead {
+  [data-settled='true'] > .xu-blob-lead {
     transition: transform var(--dur-base) var(--ease);
   }
-  /* La traîne part 50 ms plus tard : l'écart entre les deux gouttes dessine le pont liquide. */
-  .xu-blob-trail {
-    transition: transform var(--dur-base) cubic-bezier(0.65, 0, 0.35, 1) 50ms;
+  .xu-bulge-pill {
+    animation: xu-bulge-pill var(--dur-slow) var(--ease);
   }
-  .xu-bulge {
-    animation: xu-bulge var(--dur-slow) var(--ease);
+  .xu-bulge-bar {
+    animation: xu-bulge-bar var(--dur-slow) var(--ease);
+  }
+  .xu-bulge-row {
+    animation: xu-bulge-row var(--dur-slow) var(--ease);
   }
 
   /* ---------------- Planche d'entrée ---------------- */
@@ -220,15 +224,19 @@
   }
 }
 /* Gonflement de la goutte de tête pendant le trajet, puis retour à la forme de repos. */
-@keyframes xu-bulge {
-  0% {
-    transform: scale(1, 1);
-  }
+@keyframes xu-bulge-pill {
   40% {
     transform: scale(0.92, 1.14);
   }
-  100% {
-    transform: scale(1, 1);
+}
+@keyframes xu-bulge-bar {
+  40% {
+    transform: scale(0.94, 1.9);
+  }
+}
+@keyframes xu-bulge-row {
+  40% {
+    transform: scale(0.985, 1.12);
   }
 }
 @keyframes xu-rise {

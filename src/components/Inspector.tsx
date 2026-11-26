@@ -217,7 +217,7 @@ function MemberList({
               onClick={() => onChange(drafts.filter((_, j) => j !== i))}
               aria-label={`Retirer ${d.text}`}
               title="Retirer"
-              className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
+              className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
             >
               <CloseIcon />
             </button>
@@ -238,7 +238,7 @@ function MemberList({
             />
           </li>
         )}
-        {drafts.length === 0 && !adding && <li className="text-xs text-slate-400">Aucun pour l’instant.</li>}
+        {drafts.length === 0 && !adding && <li className="text-xs text-fg-muted">Aucun pour l’instant.</li>}
       </ul>
     </div>
   );
@@ -279,7 +279,7 @@ export function Inspector(p: Props) {
               </option>
             ))}
           </select>
-          {!p.chosenType && <p className="mt-1 text-[11px] text-slate-400">Déduit du contenu du tableau.</p>}
+          {!p.chosenType && <p className="mt-1 text-[11px] text-fg-muted">Déduit du contenu du tableau.</p>}
         </Section>
 
         {node ? (
@@ -346,7 +346,7 @@ export function Inspector(p: Props) {
               }
             >
               {diagram.classes.length === 0 ? (
-                <p className="text-xs leading-relaxed text-slate-400">Le tableau est vide. Commencez par ajouter {vocab.create[0]?.withArticle} ci-dessus.</p>
+                <p className="text-xs leading-relaxed text-fg-muted">Le tableau est vide. Commencez par ajouter {vocab.create[0]?.withArticle} ci-dessus.</p>
               ) : (
                 <ul className="flex flex-col">
                   {list.map((c) => {
@@ -359,11 +359,11 @@ export function Inspector(p: Props) {
                           data-element-row={c.name}
                           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"
                         >
-                          <span className="text-slate-400">
+                          <span className="text-fg-muted">
                             <KindIcon kind={k} />
                           </span>
                           <span className="min-w-0 flex-1 truncate">{displayName(c)}</span>
-                          <span className="shrink-0 text-[11px] text-slate-400">{ELEMENT_LABEL[k]}</span>
+                          <span className="shrink-0 text-[11px] text-fg-muted">{ELEMENT_LABEL[k]}</span>
                         </button>
                       </li>
                     );
@@ -377,7 +377,7 @@ export function Inspector(p: Props) {
                 <ul className="flex flex-col gap-1.5">
                   {diagram.groups?.map((g) => (
                     <li key={`${g.name}-${g.line}`} data-group-row={g.title} className="flex items-center gap-1.5">
-                      <span className="w-[74px] shrink-0 text-[11px] text-slate-400">
+                      <span className="w-[74px] shrink-0 text-[11px] text-fg-muted">
                         {g.kind === 'package' ? 'Paquetage' : g.kind === 'system' ? 'Système' : 'Cadre'}
                       </span>
                       <CommitInput value={g.title} onCommit={(v) => v.trim() && p.onRenameGroup(g, v)} label={`Titre du groupe ${g.title}`} className={`${FIELD} h-7 text-[13px]`} />
@@ -447,11 +447,11 @@ function NoteSheet(p: Props & { node: ClassNode }) {
           aria-label="Texte de la note"
           className={`${FIELD} h-auto resize-y py-1.5 leading-relaxed`}
         />
-        <p className="mt-1 text-[11px] text-slate-400">Entrée pour aller à la ligne ; enregistré quand vous quittez le champ.</p>
+        <p className="mt-1 text-[11px] text-fg-muted">Entrée pour aller à la ligne ; enregistré quand vous quittez le champ.</p>
       </Section>
       <Section title="Rattachée à">
         {candidates.length === 0 ? (
-          <p className="text-xs text-slate-400">Aucun élément sur le tableau.</p>
+          <p className="text-xs text-fg-muted">Aucun élément sur le tableau.</p>
         ) : (
           <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
             {candidates.map((c) => (
@@ -541,7 +541,7 @@ function ElementSheet(p: Props & { node: ClassNode; elements: { name: string; la
         ) : (
           <CommitInput key={name} value={displayName(node)} onCommit={(v) => p.onLabel(name, v)} label="Nom" placeholder="Nom" />
         )}
-        {classLike && <p className="mt-1 text-[11px] text-slate-400">Sans espace : « compte client » devient « CompteClient ».</p>}
+        {classLike && <p className="mt-1 text-[11px] text-fg-muted">Sans espace : « compte client » devient « CompteClient ».</p>}
 
         {kind === 'object' && (
           <div className="mt-3">

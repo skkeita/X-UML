@@ -109,7 +109,7 @@ export function VersionsDialog({
             <nav aria-label="Versions" className="max-h-48 shrink-0 overflow-y-auto border-b border-slate-200 p-2 sm:max-h-none sm:w-72 sm:border-b-0 sm:border-r dark:border-slate-800">
               {groups.map((g) => (
                 <div key={g.day} className="mb-2">
-                  <p className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">{g.day}</p>
+                  <p className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted">{g.day}</p>
                   {g.items.map((v) => (
                     <button
                       key={v.id}

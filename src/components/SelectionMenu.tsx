@@ -129,7 +129,7 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
           {frame && (
             <div className="mb-0.5 flex items-center gap-0.5 border-b border-slate-100 pb-0.5 dark:border-slate-800">
               <span className="min-w-0 max-w-[220px] flex-1 truncate px-2 text-xs font-semibold text-slate-700 dark:text-slate-200" title={frame.title}>
-                <span className="mr-1 inline-flex align-[-2px] text-slate-400">{frame.kind === 'package' ? <FolderIcon /> : frame.kind === 'system' ? <SystemIcon /> : <FrameIcon />}</span>
+                <span className="mr-1 inline-flex align-[-2px] text-fg-muted">{frame.kind === 'package' ? <FolderIcon /> : frame.kind === 'system' ? <SystemIcon /> : <FrameIcon />}</span>
                 {frame.title}
               </span>
               <button
@@ -324,7 +324,7 @@ export function SelectionMenu({ x, y, above, boundsW, names, frame, onRenameFram
             <button type="button" className={btn} onClick={() => setStep('root')}>
               Retour
             </button>
-            <span className="ml-auto text-[11px] text-slate-400">Ctrl+Entrée</span>
+            <span className="ml-auto text-[11px] text-fg-muted">Ctrl+Entrée</span>
           </div>
         </form>
       )}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { LiquidIndicator } from './Liquid';
 
 export interface Command {
   id: string;
@@ -13,6 +14,9 @@ export interface Command {
   disabled?: boolean;
   run: () => void;
 }
+
+/** Hauteur d'une ligne de résultat (h-10), en px : sert à placer le surlignage liquide. */
+const ROW_H = 40;
 
 /** Recherche insensible à la casse et aux accents (« editeur » trouve « Éditeur »). */
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -97,7 +101,21 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
           placeholder="Rechercher une action : exporter, thème, nouveau tableau…"
           className="h-12 shrink-0 border-b border-line bg-transparent px-4 text-[15px] text-fg placeholder:text-fg-muted focus:outline-none"
         />
-        <ul ref={list} id="xu-commands" role="listbox" aria-label="Actions" className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        <ul ref={list} id="xu-commands" role="listbox" aria-label="Actions" className="relative min-h-0 flex-1 overflow-y-auto p-1.5">
+          {/* Surlignage liquide : il coule de ligne en ligne au clavier comme à la souris.
+              La couche couvre toute la liste (pas seulement la partie visible) et défile avec elle. */}
+          {results.length > 0 && (
+            <LiquidIndicator
+              className="left-1.5 right-1.5 top-1.5"
+              style={{ height: results.length * ROW_H }}
+              rect={{ x: 0, y: current * ROW_H, h: ROW_H }}
+              bulgeKey={current}
+              color="rounded-md bg-indigo-100 dark:bg-accent-soft"
+              variant="row"
+            >
+              <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-accent-strong" />
+            </LiquidIndicator>
+          )}
           {results.map((c, i) => {
             const selected = i === current;
             return (
@@ -108,10 +126,9 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
                 aria-selected={selected}
                 onMouseMove={() => setIndex(i)}
                 onClick={() => run(c)}
-                // Ligne active : fond violet très pâle + filet violet à gauche (jamais d'aplat violet).
-                className={`relative flex h-10 cursor-pointer items-center gap-3 rounded-md px-3 text-sm ${selected ? 'bg-accent-soft text-fg' : 'text-fg'}`}
+                // Ligne active : le fond et le filet violets sont portés par la couche liquide ci-dessus.
+                className="relative flex h-10 cursor-pointer items-center gap-3 rounded-md px-3 text-sm text-fg"
               >
-                {selected && <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-accent-strong" aria-hidden="true" />}
                 <span className={`flex w-4 shrink-0 justify-center ${selected ? 'text-accent-strong' : 'text-fg-muted'}`}>{c.icon}</span>
                 <span className="min-w-0 flex-1 truncate">{c.label}</span>
                 {c.keys ? (
