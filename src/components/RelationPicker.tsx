@@ -91,7 +91,7 @@ export function RelationPicker({ x, y, bounds, from, to, choices, current, onPic
                 onClick={() => onPick(c)}
                 title={c.hint}
                 aria-pressed={active}
-                className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left${
                   active
                     ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
                     : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
@@ -99,7 +99,7 @@ export function RelationPicker({ x, y, bounds, from, to, choices, current, onPic
               >
                 <RelationGlyph kind={c.kind} />
                 <span className="flex-1">{c.label}</span>
-                <kbd className="text-[10px] text-slate-400">{i + 1}</kbd>
+                <kbd className="text-[10px] text-fg-muted">{i + 1}</kbd>
               </button>
             </li>
           );
@@ -120,7 +120,7 @@ export function RelationPicker({ x, y, bounds, from, to, choices, current, onPic
             <span className="inline-flex items-center gap-1.5"><TrashIcon /> Supprimer</span>
           </button>
         ) : (
-          <span className="flex-1 self-center px-2 text-center text-[10.5px] leading-tight text-slate-400" title="Relation déduite du type d’un attribut ou d’une opération">
+          <span className="flex-1 self-center px-2 text-center text-[10.5px] leading-tight text-fg-muted" title="Relation déduite du type d’un attribut ou d’une opération">
             déduite du code
           </span>
         )}

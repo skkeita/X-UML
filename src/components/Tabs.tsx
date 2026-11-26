@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { TEMPLATES, type Template } from '../core/templates';
 import type { Board } from '../lib/project';
 import { CloseIcon } from './Icons';
+import { LiquidIndicator, type LiquidRect } from './Liquid';
 
 interface Props {
   boards: Board[];
@@ -21,6 +22,23 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
   const [draft, setDraft] = useState('');
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Filet de l'onglet actif, liquide : il coule d'un onglet à l'autre au lieu de sauter.
+  // Position mesurée dans la liste (qui défile avec elle), remesurée si un nom change de longueur.
+  const listRef = useRef<HTMLDivElement>(null);
+  const [bar, setBar] = useState<LiquidRect | null>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const measure = () => {
+      const tab = list.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+      setBar(tab ? { x: tab.offsetLeft + 1, y: tab.offsetTop, w: tab.offsetWidth - 2, h: 3 } : null);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(list);
+    return () => ro.disconnect();
+  }, [activeId, boards, editing]);
 
   useEffect(() => {
     if (!menu) return;
@@ -44,9 +62,9 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
   return (
     <nav
       aria-label="Tableaux du projet"
-      className="relative flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-slate-200 bg-slate-100 px-2 dark:border-slate-800 dark:bg-slate-900/70"
+      className="relative flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-line bg-surface-2 px-2"
     >
-      <div role="tablist" className="flex items-end gap-0.5">
+      <div ref={listRef} role="tablist" className="relative flex items-end gap-0.5">
         {boards.map((b) => {
           const active = b.id === activeId;
           return (
@@ -62,11 +80,11 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
                 setDraft(b.name);
               }}
               title="Double-clic pour renommer"
-              // Onglet actif : la feuille au premier plan, repérée par un filet cobalt (comme un onglet de classeur).
+              // Onglet actif : la feuille au premier plan, repérée par le filet violet liquide (dessiné plus bas).
               className={`group -mb-px flex h-8 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-3 text-[13px] ${
                 active
-                  ? 'border-slate-200 border-t-2 border-t-indigo-600 bg-white font-medium text-slate-900 dark:border-slate-700 dark:border-t-indigo-400 dark:bg-slate-950 dark:text-white'
-                  : 'border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/60'
+                  ? 'border-line border-t-2 border-t-transparent bg-canvas font-medium text-fg'
+                  : 'border-transparent text-fg-muted hover:bg-surface/70 hover:text-fg'
               }`}
             >
               {editing === b.id ? (
@@ -95,7 +113,7 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
                   }}
                   aria-label={`Fermer ${b.name}`}
                   title="Fermer ce tableau (Ctrl+Z pour annuler)"
-                  className={`rounded px-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 ${active ? '' : 'opacity-0 group-hover:opacity-100'}`}
+                  className={`rounded px-0.5 text-fg-muted hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 ${active ? '' : 'opacity-0 group-hover:opacity-100'}`}
                 >
                   <CloseIcon size={12} />
                 </button>
@@ -103,6 +121,7 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
             </div>
           );
         })}
+        <LiquidIndicator className="inset-0 z-10" rect={bar} bulgeKey={activeId} color="rounded-full bg-accent-strong" variant="bar" filter="xu-goo-thin" />
       </div>
 
       <div ref={menuRef} className="relative self-center">
@@ -117,7 +136,7 @@ export function Tabs({ boards, activeId, onSelect, onAdd, onRename, onClose }: P
           + Nouveau
         </button>
         {menu && (
-          <div role="menu" className="fixed z-40 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          <div role="menu" className="fixed z-40 mt-1 w-72 origin-top-left animate-pop-in rounded-lg border border-line bg-surface p-1 shadow-lg">
             {TEMPLATES.map((t) => (
               <button
                 key={t.id}

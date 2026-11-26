@@ -34,7 +34,7 @@ export class ErrorBoundary extends Component<Props, { error: Error | null; key: 
         <p className="font-medium">Le diagramme n’a pas pu être affiché dans cet état.</p>
         <p className="text-xs text-slate-500 dark:text-slate-400">Votre travail est intact et enregistré. Annulez la dernière action pour revenir à l’état précédent.</p>
         {this.props.onUndo && (
-          <button type="button" onClick={this.props.onUndo} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500">
+          <button type="button" onClick={this.props.onUndo} className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent-hover">
             Annuler la dernière action (Ctrl+Z)
           </button>
         )}

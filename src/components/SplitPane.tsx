@@ -37,7 +37,8 @@ export function SplitPane({ left, right, leftOpen }: Props) {
     <div ref={container} className="flex min-h-0 flex-1 flex-col md:flex-row" style={{ '--left-w': `${width}px` } as CSSProperties}>
       {leftOpen && (
         <>
-          <section className="h-2/5 min-h-0 shrink-0 md:h-auto md:w-[var(--left-w)]">{left}</section>
+          {/* Ouverture du panneau : glissement + fondu (transform et opacity), la largeur n'est pas animée */}
+          <section className="h-2/5 min-h-0 shrink-0 animate-panel-in md:h-auto md:w-[var(--left-w)]">{left}</section>
           <div
             role="separator"
             aria-orientation="vertical"
@@ -46,7 +47,7 @@ export function SplitPane({ left, right, leftOpen }: Props) {
             onPointerMove={onMove}
             onPointerUp={onUp}
             onPointerCancel={onUp}
-            className="hidden w-1 shrink-0 cursor-col-resize bg-slate-200 transition-colors hover:bg-indigo-400 active:bg-indigo-500 md:block dark:bg-slate-800"
+            className="hidden w-1 shrink-0 cursor-col-resize bg-line hover:bg-accent-strong active:bg-accent-strong md:block"
           />
         </>
       )}

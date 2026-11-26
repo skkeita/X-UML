@@ -8,10 +8,10 @@ function Keys({ combo }: { combo: string }) {
     <span className="inline-flex flex-wrap items-center gap-1">
       {combo.split(' · ').map((alt, i) => (
         <span key={alt} className="inline-flex items-center gap-1">
-          {i > 0 && <span className="text-[11px] text-slate-400">ou</span>}
+          {i > 0 && <span className="text-[11px] text-fg-muted">ou</span>}
           {alt.split('+').map((k, j) => (
             <span key={`${k}-${j}`} className="inline-flex items-center gap-1">
-              {j > 0 && <span className="text-[10px] text-slate-400">+</span>}
+              {j > 0 && <span className="text-[10px] text-fg-muted">+</span>}
               <kbd className="rounded border border-slate-300 border-b-2 bg-slate-50 px-1.5 py-0.5 font-sans text-[11px] font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
                 {k}
               </kbd>
@@ -82,12 +82,12 @@ export function FeaturesDialog({ onClose, onShowLegal }: { onClose: () => void; 
   const goTo = (id: string) => body.current?.querySelector(`#feat-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 backdrop-blur-[2px] sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-slate-900/40 p-3 backdrop-blur-[2px] sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Fonctionnalités de X-UML"
-        className="flex h-full max-h-[860px] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950"
+        className="animate-pop-in flex h-full max-h-[860px] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950"
       >
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
           <div className="min-w-0">
@@ -134,7 +134,7 @@ export function FeaturesDialog({ onClose, onShowLegal }: { onClose: () => void; 
                 className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white"
               >
                 <span className="truncate">{s.title}</span>
-                <span className="ml-2 text-[11px] text-slate-400">{s.items.length}</span>
+                <span className="ml-2 text-[11px] text-fg-muted">{s.items.length}</span>
               </button>
             ))}
             {showShortcuts && (

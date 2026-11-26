@@ -28,13 +28,15 @@ interface Props {
 const TOKEN =
   /(\/\/.*$)|(\b(?:abstract|class|interface|enum|extends|implements|actor|usecase|object|system|package|diagram|color|style|legend|note)\b)|(\*--|(?<!\w)o--|--\|>|\.\.\|>|-->|\.\.>|--)|(^\s*[+\-#~])|([{}])|(\p{Lu}[\p{L}\p{N}_]*)/gu;
 
+// Coloration monochrome : la hiérarchie passe par la graisse et le gris, pas par la couleur.
+// Le violet reste réservé à la sélection et au focus ; le rouge, aux erreurs.
 const CLASSES = [
-  'text-slate-400 italic', // 1 commentaire
-  'font-semibold text-violet-600 dark:text-violet-400', // 2 mot-clé
-  'font-semibold text-amber-600 dark:text-amber-400', // 3 opérateur de relation
-  'text-emerald-600 dark:text-emerald-400', // 4 visibilité
-  'text-slate-400', // 5 accolade
-  'text-sky-700 dark:text-sky-300', // 6 nom de classe / type
+  'italic text-fg-muted', // 1 commentaire
+  'font-semibold text-fg', // 2 mot-clé
+  'font-semibold text-fg-muted', // 3 opérateur de relation
+  'text-fg-muted', // 4 visibilité
+  'text-fg-muted', // 5 accolade
+  'font-medium text-fg', // 6 nom de classe / type
 ];
 
 function highlight(line: string): ReactNode[] {

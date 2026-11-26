@@ -18,6 +18,10 @@ import { addElement, renameElement, setElementKind, setGroupTitle, setElementLab
 import { Inspector } from './components/Inspector';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FeaturesDialog } from './components/FeaturesDialog';
+import { CommandPalette, type Command } from './components/CommandPalette';
+import { BookIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './components/Icons';
+import { TEMPLATES } from './core/templates';
+import { MOTION, prefersReducedMotion } from './core/theme';
 import { LEGAL_TABS, LegalDialog, type LegalTab } from './components/LegalDialog';
 import { SAMPLE_SOURCE } from './core/sample';
 import type { Template } from './core/templates';
@@ -815,11 +819,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', onF1);
   }, []);
 
+  // Palette de commandes (Ctrl+K) : toutes les actions au clavier.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const paletteOpenRef = useRef(false);
+  paletteOpenRef.current = paletteOpen;
+
   const dialogOpenRef = useRef(false);
   dialogOpenRef.current = codegenOpen || versionsOpen;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (e.key.toLowerCase() === 'k') {
+        // Ctrl+K ouvre et referme la palette ; elle ne s'ouvre pas par-dessus une autre fenêtre.
+        if (paletteOpenRef.current || !(featuresOpenRef.current || legalOpenRef.current || dialogOpenRef.current)) {
+          e.preventDefault();
+          setPaletteOpen((o) => !o);
+        }
+        return;
+      }
+      if (paletteOpenRef.current) return;
       if (featuresOpenRef.current || legalOpenRef.current || dialogOpenRef.current) return; // une fenêtre est ouverte : pas d'action sur le diagramme
       const k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) undo();
@@ -834,6 +853,37 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo, downloadProject, downloadPdf]);
+
+  // Changement de tableau : le diagramme apparaît en fondu (opacité seule, sur le compositeur).
+  // Lié à l'identifiant du tableau, jamais au texte : la frappe reste rendue instantanément.
+  const canvasWrap = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    canvasWrap.current?.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION.base, easing: MOTION.ease });
+  }, [active.id]);
+
+  // Actions de la palette de commandes : les mêmes que les boutons et les raccourcis.
+  const commands: Command[] = [
+    { id: 'pdf', group: 'Exporter', label: 'Exporter en PDF', keys: 'Ctrl+P', icon: <PdfIcon />, tags: 'imprimer a4 document', run: () => void downloadPdf() },
+    { id: 'svg', group: 'Exporter', label: 'Exporter l’image du diagramme (SVG)', icon: <ImageIcon />, tags: 'png vectoriel', run: () => exportSvg() },
+    { id: 'json', group: 'Exporter', label: 'Enregistrer le projet (JSON)', keys: 'Ctrl+S', icon: <DownloadIcon />, tags: 'sauvegarder télécharger', run: () => downloadProject() },
+    { id: 'code', group: 'Exporter', label: 'Exporter le code du diagramme (.txt)', icon: <CodeIcon />, tags: 'script texte', run: () => exportCode() },
+    { id: 'codegen', group: 'Exporter', label: 'Générer le code source (Java, TypeScript, Python)…', icon: <CodeIcon />, tags: 'squelette classes', run: () => setCodegenOpen(true) },
+    { id: 'share', group: 'Exporter', label: 'Copier un lien de partage', icon: <LinkIcon />, tags: 'url envoyer', run: () => void shareLink() },
+    { id: 'import', group: 'Projet', label: 'Importer un projet…', keys: 'Ctrl+O', icon: <UploadIcon />, tags: 'ouvrir fichier java plantuml', run: () => fileInput.current?.click() },
+    { id: 'versions', group: 'Projet', label: 'Historique des versions…', icon: <HistoryIcon />, tags: 'restaurer revenir sauvegarde', run: openVersions },
+    { id: 'undo', group: 'Édition', label: 'Annuler', keys: 'Ctrl+Z', icon: <UndoIcon />, disabled: !history.canUndo, run: undo },
+    { id: 'redo', group: 'Édition', label: 'Rétablir', keys: 'Ctrl+Y', icon: <RedoIcon />, disabled: !history.canRedo, run: redo },
+    { id: 'editor', group: 'Affichage', label: editorOpen ? 'Masquer l’éditeur' : 'Afficher l’éditeur', keys: 'Ctrl+B', icon: <PanelIcon />, tags: 'panneau code', run: () => setEditorOpen((o) => !o) },
+    { id: 'theme', group: 'Affichage', label: theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre', icon: theme === 'dark' ? <SunIcon /> : <MoonIcon />, tags: 'thème dark light nuit', run: toggle },
+    { id: 'fit', group: 'Affichage', label: 'Ajuster le diagramme à la fenêtre', tags: 'zoom recentrer', run: () => setFitKey((k) => k + 1) },
+    { id: 'mode-code', group: 'Mode', label: 'Mode Code', tags: 'script texte', disabled: relationMode === 'simple', run: () => setRelationMode('simple') },
+    { id: 'mode-visual', group: 'Mode', label: 'Mode Visuel', tags: 'souris menus', disabled: relationMode === 'custom', run: () => setRelationMode('custom') },
+    ...TEMPLATES.map((t) => ({ id: `new-${t.id}`, group: 'Nouveau tableau', label: `Nouveau tableau : ${t.label}`, tags: 'créer onglet exemple', run: () => addBoard(t) })),
+    ...boards.filter((b) => b.id !== active.id).map((b) => ({ id: `go-${b.id}`, group: 'Aller au tableau', label: `Aller au tableau « ${b.name} »`, tags: 'onglet ouvrir', run: () => setActiveId(b.id) })),
+    { id: 'features', group: 'Aide', label: 'Fonctionnalités et raccourcis', keys: 'F1', icon: <BookIcon />, tags: 'aide documentation', run: () => setFeaturesOpen(true) },
+    { id: 'legal', group: 'Aide', label: 'Mentions légales et confidentialité', run: () => openLegal('mentions') },
+  ];
 
   const hasErrors = result.errors.length > 0;
 
@@ -969,6 +1019,7 @@ export default function App() {
         relationMode={relationMode}
         onRelationModeChange={setRelationMode}
         onShowFeatures={() => setFeaturesOpen(true)}
+        onShowPalette={() => setPaletteOpen(true)}
         corners={diagram.style?.corners ?? 'rounded'}
         onCornersChange={(c) => editSource((src) => setCorners(src, c))}
         legendCount={diagram.style?.legend.length ?? 0}
@@ -980,6 +1031,7 @@ export default function App() {
         leftOpen={editorOpen}
         left={editorPanel}
         right={
+          <div ref={canvasWrap} className="h-full w-full">
           <ErrorBoundary resetKey={`${active.id}|${source}|${JSON.stringify(stored)}|${JSON.stringify(active.anchors ?? {})}`} onUndo={undo}>
           <Canvas
             diagram={diagram}
@@ -1019,14 +1071,16 @@ export default function App() {
             focus={focusActive ? focusName : null}
           />
           </ErrorBoundary>
+          </div>
         }
       />
       {dragOver && (
-        <div className="pointer-events-none fixed inset-2 z-40 flex items-center justify-center rounded-xl border-4 border-dashed border-indigo-400 bg-indigo-500/10 text-lg font-medium text-indigo-700 backdrop-blur-[1px] dark:text-indigo-200">
+        <div className="pointer-events-none fixed inset-2 z-40 flex items-center justify-center animate-fade-in rounded-xl border-2 border-dashed border-accent-strong bg-accent/10 text-lg font-medium text-fg backdrop-blur-[1px]">
           Déposez le fichier pour importer le projet
         </div>
       )}
       <Toast toast={toast} onClose={closeToast} />
+      {paletteOpen && <CommandPalette commands={commands} onClose={closePalette} />}
       {featuresOpen && <FeaturesDialog onClose={closeFeatures} onShowLegal={() => { setFeaturesOpen(false); openLegal('mentions'); }} />}
       {codegenOpen && <CodeGenDialog diagram={diagram} boardName={active.name} onClose={closeCodegen} />}
       {versionsOpen && (

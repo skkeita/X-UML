@@ -25,7 +25,7 @@ export function EditorModeBar({ mode, onModeChange, focusName, lineCount, totalL
       aria-checked={mode === value}
       onClick={() => onModeChange(value)}
       title={title}
-      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+      className={`rounded-md px-2.5 py-1 text-xs font-medium${
         mode === value
           ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
           : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
@@ -78,7 +78,7 @@ export function FocusPlaceholder({
         <button
           type="button"
           onClick={() => onDeclare?.(implicit)}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500"
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent-hover"
         >
           Déclarer {implicit}
         </button>

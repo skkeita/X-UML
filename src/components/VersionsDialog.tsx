@@ -84,8 +84,8 @@ export function VersionsDialog({
   }, [versions]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-3 backdrop-blur-[2px] sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label="Historique des versions" className="flex h-full max-h-[720px] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950">
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-slate-900/40 p-3 backdrop-blur-[2px] sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label="Historique des versions" className="animate-pop-in flex h-full max-h-[720px] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-950">
         <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
           <span className="text-slate-500"><HistoryIcon size={18} /></span>
           <div className="min-w-0">
@@ -109,7 +109,7 @@ export function VersionsDialog({
             <nav aria-label="Versions" className="max-h-48 shrink-0 overflow-y-auto border-b border-slate-200 p-2 sm:max-h-none sm:w-72 sm:border-b-0 sm:border-r dark:border-slate-800">
               {groups.map((g) => (
                 <div key={g.day} className="mb-2">
-                  <p className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">{g.day}</p>
+                  <p className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted">{g.day}</p>
                   {g.items.map((v) => (
                     <button
                       key={v.id}
@@ -135,7 +135,7 @@ export function VersionsDialog({
                   <button type="button" onClick={() => onDelete(version.id)} title="Supprimer cette version" aria-label="Supprimer cette version" className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-red-600 dark:hover:bg-slate-800">
                     <TrashIcon />
                   </button>
-                  <button type="button" onClick={() => onRestore(version)} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500" data-restore="">
+                  <button type="button" onClick={() => onRestore(version)} className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:bg-accent-hover" data-restore="">
                     Restaurer cette version
                   </button>
                 </div>
