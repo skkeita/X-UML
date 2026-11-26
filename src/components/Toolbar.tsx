@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { ThemeName } from '../core/theme';
 import type { SaveStatus } from '../lib/storage';
 import { useEffect, useRef, useState } from 'react';
+import { LiquidSwitch } from './LiquidSwitch';
 import { BookIcon, SearchIcon, CodeIcon, DownloadIcon, HistoryIcon, ImageIcon, LinkIcon, PaletteIcon, MoonIcon, PanelIcon, PdfIcon, RedoIcon, SunIcon, UndoIcon, UploadIcon } from './Icons';
 
 interface Props {
@@ -114,28 +115,16 @@ export function Toolbar(p: Props) {
 
       <div className="flex items-center gap-1">
         {/* Mode d'édition : script (Code) ou construction à la souris (Visuel) — le script reste la référence */}
-        <div role="radiogroup" aria-label="Mode d’édition" className="mr-1 hidden rounded-lg bg-surface-2 p-0.5 md:flex">
-          {(
-            [
-              ['simple', 'Code', 'Mode Code : le diagramme s’écrit sous forme de script, relations comprises — le plus rapide au clavier.'],
-              ['custom', 'Visuel', 'Mode Visuel : tout se construit avec des menus et des champs, sans écrire une ligne de code.'],
-            ] as const
-          ).map(([value, label, title]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={p.relationMode === value}
-              title={title}
-              onClick={() => p.onRelationModeChange(value)}
-              className={`rounded-md px-3 py-1 text-xs font-medium ${
-                p.relationMode === value ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <LiquidSwitch
+          ariaLabel="Mode d’édition"
+          className="mr-1 hidden md:block"
+          value={p.relationMode}
+          onChange={p.onRelationModeChange}
+          options={[
+            { value: 'simple', label: 'Code', title: 'Mode Code : le diagramme s’écrit sous forme de script, relations comprises — le plus rapide au clavier.' },
+            { value: 'custom', label: 'Visuel', title: 'Mode Visuel : tout se construit avec des menus et des champs, sans écrire une ligne de code.' },
+          ]}
+        />
         {/* Annuler / rétablir visibles : la fonction se découvre sans connaître le raccourci */}
         <Button onClick={p.onUndo} title="Annuler (Ctrl+Z)" disabled={!p.canUndo}>
           <UndoIcon />
